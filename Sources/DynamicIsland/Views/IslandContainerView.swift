@@ -65,6 +65,12 @@ public struct IslandContainerView: View {
     private var cornerRadius: CGFloat {
         appState.isExpanded ? 26.0 : (isNotchMode ? 14.0 : 17.0)
     }
+
+    /// Top corners are always 0 in notch mode so the island is flush against
+    /// the screen edge — no crescent-shaped gap for the mouse to slip through.
+    private var topCornerRadius: CGFloat {
+        isNotchMode ? 0 : cornerRadius
+    }
     
     public var body: some View {
         VStack(spacing: 0) {
@@ -73,7 +79,7 @@ public struct IslandContainerView: View {
                 // ── Liquid Glass background ──────────────────────────────
                 if appState.isExpanded {
                     // Frosted material layer (AppKit NSVisualEffectView)
-                    LiquidGlassBackground(cornerRadius: cornerRadius)
+                    LiquidGlassBackground(cornerRadius: cornerRadius, topCornerRadius: topCornerRadius)
                         .opacity(0.92)
 
                     // Dark tint to deepen contrast on the glass
@@ -146,8 +152,35 @@ public struct IslandContainerView: View {
                 }
             }
             .frame(width: islandWidth, height: islandHeight, alignment: .top)
-            // CLIP SHAPE: Strictly guarantees that zero pixels ever overflow outside the capsule!
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            // CLIP SHAPE: flat top in notch mode → no gap between island and screen edge
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: topCornerRadius,
+                    bottomLeadingRadius: cornerRadius,
+                    bottomTrailingRadius: cornerRadius,
+                    topTrailingRadius: topCornerRadius,
+                    style: .continuous
+                )
+            )
+            // Drop shelf glow when a drag is hovering over the island
+            .overlay(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: topCornerRadius,
+                    bottomLeadingRadius: cornerRadius,
+                    bottomTrailingRadius: cornerRadius,
+                    topTrailingRadius: topCornerRadius,
+                    style: .continuous
+                )
+                .stroke(
+                    isTargetedForDrop ? Color.blue.opacity(0.8) : Color.clear,
+                    lineWidth: isTargetedForDrop ? 2 : 0
+                )
+                .shadow(
+                    color: isTargetedForDrop ? Color.blue.opacity(0.5) : .clear,
+                    radius: 12
+                )
+                .animation(.easeInOut(duration: 0.15), value: isTargetedForDrop)
+            )
             .animation(.spring(response: 0.28, dampingFraction: 0.82, blendDuration: 0), value: appState.isExpanded)
             .animation(.spring(response: 0.28, dampingFraction: 0.82, blendDuration: 0), value: appState.activeTab)
             .onHover { hovering in
@@ -157,8 +190,11 @@ public struct IslandContainerView: View {
                     appState.handleMouseLeave()
                 }
             }
-            .onDrop(of: [.fileURL], isTargeted: $isTargetedForDrop) { providers in
+            // Accept any file being dragged — expand to Drop Shelf immediately on enter
+            .onDrop(of: [.fileURL, .item], isTargeted: $isTargetedForDrop) { providers in
+                // Expand to Drop Shelf immediately
                 appState.expand(tab: .dropShelf)
+                // Collect all dropped URLs
                 var urls: [URL] = []
                 let group = DispatchGroup()
                 for provider in providers {
@@ -174,6 +210,12 @@ public struct IslandContainerView: View {
                     }
                 }
                 return true
+            }
+            // As soon as a drag enters the compact island, open Drop Shelf immediately
+            .onChange(of: isTargetedForDrop) { _, targeted in
+                if targeted {
+                    appState.expand(tab: .dropShelf)
+                }
             }
             
             Spacer(minLength: 0)

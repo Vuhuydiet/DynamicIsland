@@ -4,6 +4,7 @@ import AppKit
 // MARK: - Liquid Glass background helper
 struct LiquidGlassBackground: NSViewRepresentable {
     var cornerRadius: CGFloat = 16
+    var topCornerRadius: CGFloat? = nil  // nil = same as cornerRadius
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let v = NSVisualEffectView()
@@ -12,12 +13,31 @@ struct LiquidGlassBackground: NSViewRepresentable {
         v.state         = .active
         v.isEmphasized  = true
         v.wantsLayer    = true
-        v.layer?.cornerRadius   = cornerRadius
-        v.layer?.masksToBounds  = true
+        applyCorners(to: v)
         return v
     }
+
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.layer?.cornerRadius = cornerRadius
+        applyCorners(to: nsView)
+    }
+
+    private func applyCorners(to v: NSVisualEffectView) {
+        let topR = topCornerRadius ?? cornerRadius
+        if topR == cornerRadius {
+            // All four corners the same — simple path
+            v.layer?.cornerRadius   = cornerRadius
+            v.layer?.maskedCorners  = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
+                                       .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+            v.layer?.masksToBounds  = true
+        } else {
+            // Flat top, rounded bottom
+            // NSVisualEffectView doesn't support per-corner radii directly,
+            // so we set bottom radius and mask only bottom corners.
+            v.layer?.cornerRadius   = cornerRadius
+            // On macOS, MinY = bottom edge (Cocoa coords), MaxY = top edge
+            v.layer?.maskedCorners  = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+            v.layer?.masksToBounds  = true
+        }
     }
 }
 

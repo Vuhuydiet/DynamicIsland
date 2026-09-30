@@ -92,6 +92,16 @@ public class AppState: ObservableObject {
         collapse()
     }
     
+    /// Called by SwiftUI's .onHover when the cursor leaves the view bounds.
+    /// Only updates the hover-glow and cancels any pending expand-on-hover timer.
+    /// Does NOT collapse — the global mouse-movement monitor in WindowController
+    /// is the sole authority for collapsing, and its rect intentionally covers the
+    /// physical notch area above the island so moving into the notch never closes it.
+    public func cancelHover() {
+        isHovering = false
+        hoverWorkItem?.cancel()
+    }
+    
     public func handleDragEntered() {
         isDraggingOver = true
         expand(tab: .dropShelf)

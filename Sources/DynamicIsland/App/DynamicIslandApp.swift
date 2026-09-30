@@ -96,11 +96,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     
-    @objc public func playDemo() {
-        AppState.shared.expand(tab: .media)
-        MediaManager.shared.startDemoTrack()
-    }
-    
+
     @objc public func quitApp() {
         NSApplication.shared.terminate(nil)
     }

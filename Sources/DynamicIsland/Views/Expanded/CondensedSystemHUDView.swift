@@ -27,21 +27,21 @@ public struct CondensedSystemHUDView: View {
                 width: badgeWidth
             )
             
-            // 3. Battery
-            InlineMetricBadge(
-                icon: monitor.stats.isCharging ? "bolt.fill" : (monitor.stats.batteryPercent < 20 ? "battery.25" : "battery.100"),
-                value: "\(monitor.stats.batteryPercent)%",
-                tint: monitor.stats.isCharging ? .green : (monitor.stats.batteryPercent < 20 ? .red : .yellow),
-                helpText: "Battery: \(monitor.stats.batteryPercent)%\(monitor.stats.isCharging ? " (Charging)" : "")",
-                width: badgeWidth
-            )
-            
-            // 4. Disk Storage (used)
+            // 3. Disk Storage (used)
             InlineMetricBadge(
                 icon: "internaldrive",
                 value: String(format: "%.0fG", monitor.stats.diskUsedGB),
                 tint: .blue,
                 helpText: String(format: "Disk: %.0f / %.0f GB used", monitor.stats.diskUsedGB, monitor.stats.diskTotalGB),
+                width: badgeWidth
+            )
+            
+            // 4. Battery
+            InlineMetricBadge(
+                icon: monitor.stats.isCharging ? "bolt.fill" : (monitor.stats.batteryPercent < 20 ? "battery.25" : "battery.100"),
+                value: "\(monitor.stats.batteryPercent)%",
+                tint: monitor.stats.isCharging ? .green : (monitor.stats.batteryPercent < 20 ? .red : .yellow),
+                helpText: "Battery: \(monitor.stats.batteryPercent)%\(monitor.stats.isCharging ? " (Charging)" : "")",
                 width: badgeWidth
             )
         }

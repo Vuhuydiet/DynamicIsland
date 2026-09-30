@@ -123,24 +123,29 @@ public class WindowController: ObservableObject {
             }
         }
         
-        // Global mouse movement monitor: collapses island immediately when cursor leaves its bounds
+        // Global mouse movement monitor: collapses island when cursor leaves its bounds.
+        // NOTE: We do NOT use NSRect.contains because it is exclusive of the max edge —
+        // a point at exactly screen.frame.maxY (the screen top) would fail the check and
+        // incorrectly trigger a collapse. Instead we use an open-top boundary: only
+        // collapse when the mouse is BELOW the island or outside its horizontal range.
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             guard let _ = self else { return }
             let appState = AppState.shared
             guard appState.isExpanded && !appState.isPinned else { return }
-            
+
             if let screen = NSScreen.main {
-                let mousePoint = NSEvent.mouseLocation
+                let mouse = NSEvent.mouseLocation
                 let islandW: CGFloat = 620.0
-                let islandH: CGFloat = 330.0
-                // Top of rect must be screen.frame.maxY so the notch/bezel zone never triggers collapse
-                let islandRect = NSRect(
-                    x: screen.frame.midX - (islandW / 2.0),
-                    y: screen.frame.maxY - islandH,
-                    width: islandW,
-                    height: islandH  // extends all the way to screen top edge
-                )
-                if !islandRect.contains(mousePoint) {
+                let islandBottom: CGFloat = screen.frame.maxY - 340.0  // panel origin Y
+                let margin: CGFloat = 10.0
+
+                let inX = mouse.x >= (screen.frame.midX - islandW / 2.0 - margin)
+                       && mouse.x <= (screen.frame.midX + islandW / 2.0 + margin)
+                // Open-top: only check that cursor is above the island's bottom edge.
+                // No upper-Y check — the cursor physically cannot go above the screen top.
+                let inY = mouse.y >= (islandBottom - margin)
+
+                if !(inX && inY) {
                     DispatchQueue.main.async {
                         if appState.isExpanded && !appState.isPinned {
                             appState.handleMouseLeave()

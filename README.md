@@ -1,120 +1,102 @@
-# Dynamic Island for MacBook (macOS)
+# Dynamic Island for macOS
 
-An ultra-sleek, native macOS Dynamic Island application built in Swift and SwiftUI. It seamlessly wraps around the MacBook Pro / MacBook Air display notch—or floats gracefully as an iPhone-style capsule on external monitors—transforming the screen notch into a powerful interactive command center.
+A native, high-performance macOS Dynamic Island built in Swift and SwiftUI. It seamlessly wraps around the MacBook Pro / MacBook Air hardware display notch—or floats as an iPhone-style interactive capsule on non-notched external displays—transforming the screen top into an interactive hub.
 
 ---
 
 ## ✨ Features
 
-### 🏝️ Adaptive Notch & Island Geometry
-- **Physical Notch Detection:** Automatically detects MacBook Pro (14" / 16") and MacBook Air hardware notches using macOS safe area insets and auxiliary display boundaries.
-- **Dynamic Ear Badges:** In compact mode, the left and right "ears" next to the notch display live indicators (live countdown timer, animated equalizer bars, battery %, or drop shelf item counts).
-- **Floating Pill Mode:** Switchable to a floating capsule mode for external monitors, iMacs, or non-notched displays.
-- **Apple-grade Fluid Physics:** Smooth spring animations (`.spring(response: 0.36, dampingFraction: 0.78)`) that fluidly expand and collapse.
+### 🏝️ Adaptive Notch & Liquid Glass Design
+- **Physical Notch Detection:** Automatically measures hardware notch dimensions and safe area insets on 14" & 16" MacBook Pros and MacBook Airs.
+- **Liquid Glass Materials:** Layered translucent frosted glass (`NSVisualEffectView` HUD material) with specular top highlights, subtle gradient sheen, and continuous curve clipping.
+- **Flush Edge Geometry:** In notch mode, the top corner radius is set to 0 (`UnevenRoundedRectangle`) to seal flush against the screen bezel with zero gaps.
+- **Dynamic Compact Ears:** Compact mode displays live indicators on either side of the notch (now-playing animations, live ticking timer, or battery/drop counters).
+- **Floating Pill Mode:** Switchable via Preferences for external monitors, studio displays, and non-notched Macs.
+- **Full-Width Tab Bar:** 600pt expanded header with equally distributed tab pills across **Media**, **Drop Shelf**, **Timer**, **Clipboard**, and **Notes**.
 
 ---
 
 ### 🎵 Universal Media & Video Player Hub
-- **Universal Source Support:** Automatically listens to **every video and audio source** playing on your Mac:
-  - 🎬 **Web Streaming & Browsers:** **YouTube**, **Netflix**, **Twitch**, and **Vimeo** across Google Chrome, Safari, Brave, Arc, and Edge.
-  - 📺 **Local Video Players:** **QuickTime Player**, **VLC Media Player**, and **IINA**.
-  - 🎧 **Music Apps:** **Apple Music**, **Spotify**, Tidal, and Podcasts.
-  - 🔊 **System-wide NowPlaying:** Native bridge to macOS `MediaRemote.framework` for universal OS audio/video session tracking.
-- **Dynamic Brand Colors & Badges:** Branded gradients, icons, and real video/album artwork (YouTube red `play.rectangle`, QuickTime cyan `film`, VLC orange `cone`, Spotify green waves, Apple Music pink notes).
-- **Interactive Scrubber:** Drag to seek through playback position.
-- **Universal Playback Controls:** Previous track, Play/Pause, Next track, and quick jump to the active source app or browser.
-- **Audio Equalizer Visualizer:** 7-bar audio frequency spectrum tinted with the active media source's brand color.
-- **Demo Mode:** Built-in demo player with sample tracks to preview animations anytime.
+- **Universal NowPlaying Detection:** Uses Apple's private `MediaRemote.framework` (`MRMediaRemoteGetNowPlayingInfo`) to inspect media playback across all system apps.
+- **Multi-Source Support:**
+  - 🎬 **Browsers & Web Video:** YouTube, Netflix, Twitch, Vimeo across Google Chrome, Safari, Brave, Arc, and Edge.
+  - 📺 **Local Players:** QuickTime Player, VLC Media Player, and IINA.
+  - 🎧 **Music Apps:** Apple Music, Spotify, Podcasts, and Tidal.
+- **Real-Time Playback Controls:** Fully functional Previous Track (`<<`), Play/Pause (`||` / `▶`), and Next Track (`>>`) powered by native `MRMediaRemoteSendCommand` with AppleScript and system key fallbacks.
+- **Interactive Scrubber:** Drag smoothly to seek position on supported media.
+- **Dynamic Accent Theming & Artwork:** Dynamic artwork previews and source-specific brand colors.
+- **Equalizer Spectrum:** Bouncing multi-bar audio visualizer that syncs to playback state.
 
 ---
 
-### 📂 Quick Drop Shelf (File Stash)
-- **Drag-to-Notch:** Drag any file, image, or link directly to the notch to immediately expand the Drop Shelf.
-- **Temporary Parking:** Stash files, code snippets, or assets at the top of your screen.
-- **Drag-Out Support:** Drag files out of the shelf into Slack, Mail, Messages, Terminal, Finder, or browser windows.
-- **Quick File Actions:** Right-click or hover to copy path, reveal in Finder, or remove items.
+### 📂 File Drop Shelf (Drag-to-Notch)
+- **Auto-Expand on Drag Hover:** Dragging files, images, or links to the notch automatically reveals the island and opens the Drop Shelf tab with a glowing blue border.
+- **File Stashing:** Temporarily park working assets, images, and documents right at the screen top.
+- **Drag-Out Support:** Drag parked files out directly into Finder, Terminal, Slack, Mail, Messages, or browsers.
+- **Quick File Operations:** Right-click or click to reveal in Finder, copy file path, or remove.
 
 ---
 
-### ⚡ Permanent Condensed System HUD (Top Section)
-The expanded island features a **two-part split architecture**:
-- **Part 1 (Top Section):** Always-visible condensed 4-pill system telemetry strip:
-  - ⚙️ **CPU:** Real-time percentage load with colored load gauge (cyan / orange / red).
-  - 💾 **Memory (RAM):** Used memory in gigabytes (e.g. `14.2 GB`) with memory ring.
-  - 🔋 **Battery:** Percentage with live charging status (`⚡ 98%`).
-  - 💽 **Disk:** Root volume storage usage (e.g. `262 GB`) with usage ring.
-- **Part 2 (Bottom Section):** Fast tab bar switching between your working modules: **Media**, **Drop Shelf**, **Timer**, **Clipboard**, and **Notes**.
+### ⚡ Condensed System HUD
+The header ear hosts a real-time system telemetry readout:
+1. ⚙️ **CPU:** Instantaneous usage percentage with load-adaptive coloring.
+2. 💾 **RAM:** Used memory in gigabytes (e.g. `14.2G`).
+3. 💽 **Disk:** Root volume used space (e.g. `245G`).
+4. 🔋 **Battery:** Real-time percentage with live charging bolt (`⚡ 98%`).
 
 ---
 
-### ⏱️ Timers & Stopwatch (Live Activity)
-- **Countdown Timer:** Presets for 1m, 5m, 15m, and 25m Pomodoro sessions with circular progress ring.
-- **Live Activity Notch Ear:** Live ticking countdown (`⏳ 04:32`) remains visible in the notch ear even when the island is collapsed!
-- **Alert Sounds & Notifications:** Gentle audio bell and notification when the timer finishes.
-- **Precision Stopwatch:** Hundredth-of-a-second stopwatch with lap time tracking.
+### ⏱️ Timers & Centered Stopwatch
+- **Custom Time Input:** Intuitive H / M / S steppers with up/down arrows to set custom countdown durations.
+- **Quick Presets:** Instant access to 1m, 5m, 15m, and 🍅 25m Pomodoro intervals.
+- **Live Activity Ear:** Countdown ticks live in the compact notch ear (`⏳ 04:32`) even when collapsed.
+- **Centered Stopwatch:** Centered millisecond stopwatch with lap recording and scrollable lap history.
+- **Audio Alerts & Notifications:** Tactile sound effects and UserNotifications on completion.
 
 ---
 
-### 📋 Clipboard History
-- **Recent Snippets:** Automatically monitors copied text, links, and code snippets.
-- **Search:** Instant search filter across clipboard items.
-- **1-Click Copy:** Click any snippet to copy it back to the clipboard with visual checkmark feedback.
+### 📋 Clipboard History & 📝 Quick Notes
+- **Clipboard History:** Automatically captures copied text and links with instant 1-click re-copying.
+- **Scratchpad Editor:** Persistent notes scratchpad with automatic saving and 1-click clipboard export.
 
 ---
 
-### 📝 Quick Scratchpad
-- **Instant Notes:** Fast, minimalist scratchpad right at the top of your screen.
-- **Auto-Saving:** Notes are automatically persisted.
-- **Copy All / Clear:** 1-click export of your quick notes.
-
----
-
-### ⚙️ Preferences & Customization
-- **Launch at Login (Start with macOS):** Option to automatically start Dynamic Island whenever your Mac turns on or you log in (managed via Apple's modern `SMAppService` and macOS Login Items).
-- **Island Mode:** Auto Detect, Notch Attached, or Floating Pill.
-- **Expansion Trigger:** Hover & Click or Click Only (with customizable hover delay).
-- **Dedicated Settings Window:** Standalone native window with categorized tabs (General, Sound Effects, Geometry & Notch, Shortcuts, About) with fine-tuning offsets and hardware detection.
-- **Rich Sound Settings:** Volume slider (0-100%), sound schemes (*macOS Classic*, *Modern Clicks*, *Subtle/Soft*), per-event audio toggles (expand, collapse, tab switch, drop, timer alert), and test audition buttons.
-- **Menu Bar Extra:** Sleek menu bar item for toggling the island, switching tabs, toggling Launch at Login, and opening Preferences.
+### ⚙️ Preferences & Shortcuts
+- **Open Preferences:** Click the **Dynamic Island** title in the header ear, press `⌘,`, or select Preferences from the menu bar.
+- **Pin Island Open:** Pin button (`📌`) keeps the island expanded regardless of mouse movement.
+- **Real-Time Menu Bar Icon:** Toggle the menu bar icon on or off live in Preferences.
+- **Launch at Login:** Starts automatically on macOS boot using modern `SMAppService`.
 
 ---
 
 ## ⌨️ Shortcuts & Gestures
 
-| Action | Gesture / Shortcut |
+| Action | Shortcut / Gesture |
 | :--- | :--- |
-| **Expand Island** | Hover mouse over the notch or click the pill |
-| **Global Toggle** | `⌥ + ⌘ + I` (Option + Command + I) |
-| **Open Settings Window** | Click the ⚙️ gear icon in the island header or `⌘,` |
-| **Collapse Island** | Move mouse away, press `Esc`, or click the `^` button |
-| **Pin Island Open** | Click the 📌 pin button in the top-right corner |
-| **Drop Files** | Drag any file over the notch to open the Drop Shelf |
-| **Menu Bar Access** | Click the capsule icon in the macOS menu bar |
+| **Expand Island** | Hover cursor over notch or click compact pill |
+| **Collapse Island** | Move cursor outside island bounds or press `Esc` |
+| **Toggle Expand / Collapse** | `⌥ + ⌘ + I` (Option + Command + I) |
+| **Open Preferences** | Click **Dynamic Island** title or press `⌘,` |
+| **Pin / Unpin Island** | Click the pin icon in the header |
+| **Drop Files** | Drag any file into the notch to open Drop Shelf |
 
 ---
 
 ## 🛠️ Building & Running
 
-### Prerequisites
-- macOS 13.0 or later (Tested on macOS Sequoia 15 / 26)
-- Apple Silicon (M1, M2, M3, M4) or Intel Mac
-- Command Line Tools (`xcode-select --install`)
+### Requirements
+- macOS 13.0 or later (Apple Silicon M-series or Intel)
+- Command Line Tools installed (`xcode-select --install`)
 
 ### Build
 Run the automated build script:
 ```bash
-./scripts/build_app.sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools ./scripts/build_app.sh
 ```
-This compiles all Swift sources with optimizations and creates `DynamicIsland.app`.
 
 ### Launch
 ```bash
 open DynamicIsland.app
-```
-
-### Install to Applications (Optional)
-```bash
-cp -R DynamicIsland.app /Applications/
 ```
 
 ---
@@ -124,48 +106,50 @@ cp -R DynamicIsland.app /Applications/
 ```
 dynamic-island/
 ├── DynamicIsland.app/              # Compiled macOS Application Bundle
-├── Package.swift                   # Swift Package manifest
+├── Package.swift                   # Swift Package definition
 ├── scripts/
-│   ├── build_app.sh               # Build and app packaging script
-│   ├── generate_icon.swift        # AppIcon generator
-│   └── AppIcon.icns               # 1024x1024 macOS App Icon
+│   ├── build_app.sh               # Compilation and bundle packager
+│   ├── generate_icon.swift        # Icon generator
+│   └── AppIcon.icns               # 1024x1024 application icon
 └── Sources/DynamicIsland/
     ├── App/
     │   ├── DynamicIslandApp.swift  # NSApplicationDelegate & Menu Bar Extra
-    │   ├── WindowController.swift  # Non-activating floating NSPanel controller
+    │   ├── WindowController.swift  # NSPanel lifecycle & open-top mouse tracking
+    │   ├── SettingsWindowController.swift # Standalone preferences window
     │   └── SoundManager.swift      # Tactile audio feedback
     ├── Models/
-    │   ├── AppState.swift          # Core state, tabs, hover & pin logic
-    │   ├── MediaManager.swift      # Apple Music & Spotify observer & visualizer
-    │   ├── DropShelfManager.swift  # Drag & drop file stash model
-    │   ├── SystemMonitor.swift     # Live CPU, RAM, Battery & quick actions
+    │   ├── AppState.swift          # Core expansion, active tab, hover & pin state
+    │   ├── MediaManager.swift      # MediaRemote bridge, AppleScript adapters & controls
+    │   ├── DropShelfManager.swift  # Drag & drop file parking model
+    │   ├── SystemMonitor.swift     # CPU, RAM, Disk, and Battery monitor
     │   ├── TimerManager.swift      # Countdown timer & stopwatch engine
-    │   ├── ClipboardManager.swift  # Clipboard history observer
-    │   ├── NotesManager.swift      # Auto-saving scratchpad
-    │   └── SettingsManager.swift   # UserDefaults preferences
+    │   ├── ClipboardManager.swift  # Pasteboard observer & history
+    │   ├── NotesManager.swift      # Persistent scratchpad
+    │   └── SettingsManager.swift   # UserDefaults configuration
     ├── Utilities/
-    │   └── NotchDetector.swift     # Hardware notch geometry & screen detection
+    │   ├── NotchDetector.swift     # Screen safe-area & hardware notch detector
+    │   └── Typography.swift        # Typography & SF Symbols definitions
     ├── Views/
-    │   ├── IslandContainerView.swift    # Morphing capsule & spring animations
+    │   ├── IslandContainerView.swift # Liquid glass container, clip shapes & gestures
     │   ├── Compact/
-    │   │   ├── CompactIslandView.swift  # Compact notch ears view
-    │   │   └── EqualizerVisualizerView.swift # Bouncing waveform spectrum
+    │   │   ├── CompactIslandView.swift # Compact ear status view
+    │   │   └── EqualizerVisualizerView.swift # Animated waveform bars
     │   ├── Expanded/
-    │   │   ├── ExpandedIslandView.swift # Tab bar & card container
-    │   │   ├── MediaView.swift          # Music player UI & seek bar
-    │   │   ├── DropShelfView.swift      # Drop shelf & file preview cards
-    │   │   ├── SystemHUDView.swift      # Resource gauges & quick toggles
-    │   │   ├── TimerView.swift          # Circular dial timer & stopwatch
-    │   │   ├── ClipboardView.swift      # History list & search
+    │   │   ├── ExpandedIslandView.swift # Header ears, tab bar & router
+    │   │   ├── CondensedSystemHUDView.swift # Inline CPU/RAM/Disk/Battery HUD
+    │   │   ├── MediaView.swift          # Track info, scrubber & media controls
+    │   │   ├── DropShelfView.swift      # Parked file grid & actions
+    │   │   ├── TimerView.swift          # Custom time steppers & stopwatch
+    │   │   ├── ClipboardView.swift      # Clipboard history list
     │   │   ├── NotesView.swift          # Scratchpad editor
-    │   │   └── SettingsView.swift       # Preferences controls
+    │   │   └── SettingsWindowView.swift # Preferences views
     │   └── Components/
-    │       ├── CustomSliders.swift      # Native volume slider
-    │       └── PillBadge.swift          # Mini capsule badges
+    │       ├── CustomSliders.swift      # Sliders and controls
+    │       └── PillBadge.swift          # Compact status badges
     └── main.swift                  # Application entry point
 ```
 
 ---
 
 ## 📄 License
-MIT License. Free and open for personal and commercial customization.
+MIT License. Free and open for personal and commercial use.

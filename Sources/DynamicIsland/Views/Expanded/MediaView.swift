@@ -174,17 +174,6 @@ public struct MediaView: View {
                 .buttonStyle(.plain)
                 
                 Spacer()
-                
-                // Demo player trigger if nothing playing
-                Button(action: {
-                    mediaManager.startDemoTrack()
-                }) {
-                    Image(systemName: "sparkles")
-                        .font(IslandFont.iconRegular)
-                        .foregroundColor(.pink)
-                }
-                .buttonStyle(.plain)
-                .help("Play demo track")
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)

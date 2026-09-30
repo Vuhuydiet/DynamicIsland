@@ -36,7 +36,6 @@ public enum MediaSource: String, Sendable {
     case iina = "IINA"
     case browser = "Web Video"
     case mediaRemote = "Now Playing"
-    case demo = "Demo Player"
     case none = "None"
     
     public var iconName: String {
@@ -49,7 +48,6 @@ public enum MediaSource: String, Sendable {
         case .iina: return "play.circle.fill"
         case .browser: return "globe"
         case .mediaRemote: return "waveform"
-        case .demo: return "sparkles"
         case .none: return "music.note"
         }
     }
@@ -64,7 +62,6 @@ public enum MediaSource: String, Sendable {
         case .iina: return .purple
         case .browser: return .indigo
         case .mediaRemote: return .blue
-        case .demo: return .pink
         case .none: return .white
         }
     }
@@ -79,12 +76,14 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     
     private var pollTimer: Timer?
     private var visualizerTimer: Timer?
-    private var demoTimer: Timer?
     
     // MediaRemote function pointers
     private typealias MRGetNowPlayingInfoType = @convention(c) (DispatchQueue, @escaping @Sendable (CFDictionary?) -> Void) -> Void
     private typealias MRRegisterNotificationsType = @convention(c) (DispatchQueue) -> Void
+    private typealias MRSendCommandType = @convention(c) (Int32, CFDictionary?) -> Bool
+    
     private var mrGetNowPlayingInfo: MRGetNowPlayingInfoType?
+    private var mrSendCommand: MRSendCommandType?
     
     private init() {
         setupMediaRemote()
@@ -100,6 +99,10 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         
         if let getInfoSym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") {
             mrGetNowPlayingInfo = unsafeBitCast(getInfoSym, to: MRGetNowPlayingInfoType.self)
+        }
+        
+        if let sendSym = dlsym(handle, "MRMediaRemoteSendCommand") {
+            mrSendCommand = unsafeBitCast(sendSym, to: MRSendCommandType.self)
         }
         
         if let registerSym = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications") {
@@ -143,11 +146,6 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     
     // MARK: - Multi-Tier Media Detection
     public func refreshMedia() {
-        // If demo track is playing, let it finish or cycle unless another real media starts
-        if currentTrack.source == .demo && currentTrack.isPlaying {
-            return
-        }
-        
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self = self else { return }
             
@@ -187,9 +185,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                     DispatchQueue.main.async { self.currentTrack = mrTrack }
                 } else {
                     DispatchQueue.main.async {
-                        if self.currentTrack.source != .demo && self.currentTrack.isPlaying {
-                            self.currentTrack = .empty
-                        }
+                        self.currentTrack = .empty
                     }
                 }
             }
@@ -507,16 +503,27 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     }
     
     // MARK: - Playback Controls
+    @discardableResult
+    public func sendMediaRemoteCommand(_ command: Int32) -> Bool {
+        if let mrSendCommand = mrSendCommand {
+            return mrSendCommand(command, nil)
+        }
+        return false
+    }
+
     public func togglePlayPause() {
         SoundManager.shared.play(.click)
         
+        var handled = false
         switch currentTrack.source {
         case .music:
-            _ = runAppleScript("tell application \"Music\" to playpause")
-            refreshMedia()
+            if runAppleScript("tell application \"Music\" to playpause") != nil {
+                handled = true
+            }
         case .spotify:
-            _ = runAppleScript("tell application \"Spotify\" to playpause")
-            refreshMedia()
+            if runAppleScript("tell application \"Spotify\" to playpause") != nil {
+                handled = true
+            }
         case .quicktime:
             let script = """
             tell application "QuickTime Player"
@@ -530,61 +537,91 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 end if
             end tell
             """
-            _ = runAppleScript(script)
-            refreshMedia()
+            if runAppleScript(script) != nil {
+                handled = true
+            }
         case .vlc:
-            _ = runAppleScript("tell application \"VLC\" to play")
-            refreshMedia()
-        case .youtube, .browser, .mediaRemote:
-            // Send system-wide Play/Pause media key
-            sendSystemMediaKey(key: 16)
-            currentTrack.isPlaying.toggle()
-        case .demo:
-            currentTrack.isPlaying.toggle()
-        case .none:
-            startDemoTrack()
+            if runAppleScript("tell application \"VLC\" to play") != nil {
+                handled = true
+            }
         default:
-            sendSystemMediaKey(key: 16)
+            break
+        }
+        
+        // 2 = Toggle Play/Pause in MediaRemote
+        if !handled {
+            if !sendMediaRemoteCommand(2) {
+                sendSystemMediaKey(key: 16)
+            }
+        }
+        
+        currentTrack.isPlaying.toggle()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.refreshMedia()
         }
     }
     
     public func nextTrack() {
         SoundManager.shared.play(.click)
+        var handled = false
         switch currentTrack.source {
         case .music:
-            _ = runAppleScript("tell application \"Music\" to next track")
-            refreshMedia()
+            if runAppleScript("tell application \"Music\" to next track") != nil {
+                handled = true
+            }
         case .spotify:
-            _ = runAppleScript("tell application \"Spotify\" to next track")
-            refreshMedia()
+            if runAppleScript("tell application \"Spotify\" to next track") != nil {
+                handled = true
+            }
         case .vlc:
-            _ = runAppleScript("tell application \"VLC\" to next")
-            refreshMedia()
-        case .demo:
-            cycleDemoTrack()
+            if runAppleScript("tell application \"VLC\" to next") != nil {
+                handled = true
+            }
         default:
-            // Send system-wide Next Track media key
-            sendSystemMediaKey(key: 17)
+            break
+        }
+        
+        // 3 = Next Track in MediaRemote
+        if !handled {
+            if !sendMediaRemoteCommand(3) {
+                sendSystemMediaKey(key: 17)
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.refreshMedia()
         }
     }
     
     public func previousTrack() {
         SoundManager.shared.play(.click)
+        var handled = false
         switch currentTrack.source {
         case .music:
-            _ = runAppleScript("tell application \"Music\" to previous track")
-            refreshMedia()
+            if runAppleScript("tell application \"Music\" to previous track") != nil {
+                handled = true
+            }
         case .spotify:
-            _ = runAppleScript("tell application \"Spotify\" to previous track")
-            refreshMedia()
+            if runAppleScript("tell application \"Spotify\" to previous track") != nil {
+                handled = true
+            }
         case .vlc:
-            _ = runAppleScript("tell application \"VLC\" to previous")
-            refreshMedia()
-        case .demo:
-            currentTrack.position = 0
+            if runAppleScript("tell application \"VLC\" to previous") != nil {
+                handled = true
+            }
         default:
-            // Send system-wide Previous Track media key
-            sendSystemMediaKey(key: 18)
+            break
+        }
+        
+        // 4 = Previous Track in MediaRemote
+        if !handled {
+            if !sendMediaRemoteCommand(4) {
+                sendSystemMediaKey(key: 18)
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.refreshMedia()
         }
     }
     
@@ -642,59 +679,14 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 data2: -1
             ) {
                 ev.cgEvent?.post(tap: .cghidEventTap)
+                ev.cgEvent?.post(tap: .cgSessionEventTap)
             }
         }
         post(down: true)
         post(down: false)
     }
     
-    // MARK: - Demo Mode
-    public func startDemoTrack() {
-        currentTrack = MediaTrack(
-            title: "Midnight City Lights",
-            artist: "Synthwave Collective",
-            album: "Neon Horizons",
-            duration: 214,
-            position: 45,
-            isPlaying: true,
-            source: .demo,
-            artworkData: nil
-        )
-        
-        demoTimer?.invalidate()
-        demoTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self, self.currentTrack.source == .demo, self.currentTrack.isPlaying else { return }
-            if self.currentTrack.position < self.currentTrack.duration {
-                self.currentTrack.position += 1
-            } else {
-                self.currentTrack.position = 0
-            }
-        }
-    }
-    
-    private func cycleDemoTrack() {
-        let songs = [
-            ("Starboy", "The Weeknd ft. Daft Punk", "Starboy", 230.0),
-            ("Blinding Lights", "The Weeknd", "After Hours", 200.0),
-            ("Get Lucky", "Daft Punk ft. Pharrell", "Random Access Memories", 248.0),
-            ("Midnight City Lights", "Synthwave Collective", "Neon Horizons", 214.0)
-        ]
-        let currentIdx = songs.firstIndex(where: { $0.0 == currentTrack.title }) ?? 0
-        let nextIdx = (currentIdx + 1) % songs.count
-        let next = songs[nextIdx]
-        
-        currentTrack = MediaTrack(
-            title: next.0,
-            artist: next.1,
-            album: next.2,
-            duration: next.3,
-            position: 0,
-            isPlaying: true,
-            source: .demo,
-            artworkData: nil
-        )
-    }
-    
+
     private func runAppleScript(_ source: String) -> String? {
         var error: NSDictionary?
         guard let scriptObj = NSAppleScript(source: source) else { return nil }
