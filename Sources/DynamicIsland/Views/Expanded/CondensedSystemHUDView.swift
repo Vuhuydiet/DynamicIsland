@@ -36,10 +36,10 @@ public struct CondensedSystemHUDView: View {
                 width: badgeWidth
             )
             
-            // 4. Disk Storage (used / total)
+            // 4. Disk Storage (used)
             InlineMetricBadge(
                 icon: "internaldrive",
-                value: String(format: "%.0f/%.0fG", monitor.stats.diskUsedGB, monitor.stats.diskTotalGB),
+                value: String(format: "%.0fG", monitor.stats.diskUsedGB),
                 tint: .blue,
                 helpText: String(format: "Disk: %.0f / %.0f GB used", monitor.stats.diskUsedGB, monitor.stats.diskTotalGB),
                 width: badgeWidth
@@ -70,7 +70,7 @@ public struct InlineMetricBadge: View {
                 .foregroundColor(tint)
             
             Text(value)
-                .font(.system(size: 8.0, weight: .semibold, design: .rounded))
+                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundColor(.white.opacity(0.92))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
