@@ -1,0 +1,11 @@
+# Xcode / SwiftPM
+.build/
+build/
+*.app/
+*.dSYM/
+.swiftpm/
+
+# macOS system files
+.DS_Store
+*.swp
+*~

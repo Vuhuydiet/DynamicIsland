@@ -1,0 +1,101 @@
+import AppKit
+import SwiftUI
+
+public class AppDelegate: NSObject, NSApplicationDelegate {
+    public static var shared: AppDelegate!
+    public var statusItem: NSStatusItem?
+    
+    public override init() {
+        super.init()
+        AppDelegate.shared = self
+    }
+    
+    public func applicationDidFinishLaunching(_ notification: Notification) {
+        // Run as accessory app (no dock icon, sits in menu bar & floating island)
+        NSApp.setActivationPolicy(.accessory)
+        
+        // Initialize window and notch detector
+        _ = NotchDetector.shared
+        WindowController.shared.setup()
+        
+        // Setup menu bar extra
+        setupStatusItem()
+    }
+    
+    public func setupStatusItem() {
+        guard SettingsManager.shared.showMenuBarIcon else { return }
+        
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem?.button {
+            let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+            button.image = NSImage(systemSymbolName: "capsule.portrait.fill", accessibilityDescription: "Dynamic Island")?
+                .withSymbolConfiguration(config)
+            button.imagePosition = .imageOnly
+        }
+        
+        let menu = NSMenu()
+        
+        let toggleItem = NSMenuItem(title: "Toggle Dynamic Island", action: #selector(toggleIsland), keyEquivalent: "i")
+        toggleItem.keyEquivalentModifierMask = [.option, .command]
+        toggleItem.target = self
+        menu.addItem(toggleItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Quick Tabs Submenu
+        let tabsMenu = NSMenu()
+        for tab in IslandTab.allCases {
+            let item = NSMenuItem(title: tab.rawValue, action: #selector(openSpecificTab(_:)), keyEquivalent: "")
+            item.representedObject = tab
+            item.target = self
+            if let img = NSImage(systemSymbolName: tab.icon, accessibilityDescription: tab.rawValue) {
+                item.image = img
+            }
+            tabsMenu.addItem(item)
+        }
+        let tabsItem = NSMenuItem(title: "Quick Switch Tab", action: nil, keyEquivalent: "")
+        tabsItem.submenu = tabsMenu
+        menu.addItem(tabsItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        let settingsItem = NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        
+        let demoItem = NSMenuItem(title: "Play Demo Track", action: #selector(playDemo), keyEquivalent: "")
+        demoItem.target = self
+        menu.addItem(demoItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        let quitItem = NSMenuItem(title: "Quit Dynamic Island", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+        
+        statusItem?.menu = menu
+    }
+    
+    @objc public func toggleIsland() {
+        AppState.shared.toggleExpand()
+    }
+    
+    @objc public func openSpecificTab(_ sender: NSMenuItem) {
+        if let tab = sender.representedObject as? IslandTab {
+            AppState.shared.expand(tab: tab)
+        }
+    }
+    
+    @objc public func openPreferences() {
+        SettingsWindowController.shared.show()
+    }
+    
+    @objc public func playDemo() {
+        AppState.shared.expand(tab: .media)
+        MediaManager.shared.startDemoTrack()
+    }
+    
+    @objc public func quitApp() {
+        NSApplication.shared.terminate(nil)
+    }
+}
