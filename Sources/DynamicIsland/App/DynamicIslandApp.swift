@@ -35,30 +35,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         let menu = NSMenu()
         
-        let toggleItem = NSMenuItem(title: "Toggle Dynamic Island", action: #selector(toggleIsland), keyEquivalent: "i")
-        toggleItem.keyEquivalentModifierMask = [.option, .command]
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
-        // Quick Tabs Submenu
-        let tabsMenu = NSMenu()
-        for tab in IslandTab.allCases {
-            let item = NSMenuItem(title: tab.rawValue, action: #selector(openSpecificTab(_:)), keyEquivalent: "")
-            item.representedObject = tab
-            item.target = self
-            if let img = NSImage(systemSymbolName: tab.icon, accessibilityDescription: tab.rawValue) {
-                item.image = img
-            }
-            tabsMenu.addItem(item)
-        }
-        let tabsItem = NSMenuItem(title: "Quick Switch Tab", action: nil, keyEquivalent: "")
-        tabsItem.submenu = tabsMenu
-        menu.addItem(tabsItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
         let settingsItem = NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -67,10 +43,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem.state = SettingsManager.shared.launchAtLogin ? .on : .off
         loginItem.target = self
         menu.addItem(loginItem)
-        
-        let demoItem = NSMenuItem(title: "Play Demo Track", action: #selector(playDemo), keyEquivalent: "")
-        demoItem.target = self
-        menu.addItem(demoItem)
         
         menu.addItem(NSMenuItem.separator())
         
