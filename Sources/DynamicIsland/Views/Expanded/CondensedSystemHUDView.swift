@@ -34,11 +34,11 @@ public struct CondensedSystemHUDView: View {
                 tint: monitor.stats.isCharging ? .green : (monitor.stats.batteryPercent < 20 ? .red : .yellow)
             )
             
-            // 4. Disk Storage
+            // 4. Disk Storage (used / total)
             CondensedMetricPill(
                 icon: "internaldrive",
                 label: "DISK",
-                value: String(format: "%.0f GB", monitor.stats.diskUsedGB),
+                value: String(format: "%.0f/%.0f GB", monitor.stats.diskUsedGB, monitor.stats.diskTotalGB),
                 progress: monitor.stats.diskTotalGB > 0 ? (monitor.stats.diskUsedGB / monitor.stats.diskTotalGB) : 0,
                 tint: .blue
             )
@@ -89,6 +89,7 @@ public struct CondensedMetricPill: View {
                     .font(IslandFont.metricNumeric)
                     .foregroundColor(.white)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             
             Spacer(minLength: 0)
