@@ -168,7 +168,7 @@ public struct GeneralSettingsTab: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Show Dynamic Island Icon in Menu Bar", isOn: $settings.showMenuBarIcon)
                         .font(.system(size: 12))
-                    Text("Provides a persistent icon in your menu bar to quickly toggle the island or switch tabs.")
+                    Text("Displays a persistent capsule icon in macOS menu bar for accessing Preferences, Launch at Login, and Quit.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }

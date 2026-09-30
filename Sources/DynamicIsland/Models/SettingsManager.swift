@@ -86,7 +86,10 @@ public class SettingsManager: ObservableObject {
     
     // MARK: - General & Geometry Settings
     @Published public var showMenuBarIcon: Bool {
-        didSet { defaults.set(showMenuBarIcon, forKey: "showMenuBarIcon") }
+        didSet {
+            defaults.set(showMenuBarIcon, forKey: "showMenuBarIcon")
+            AppDelegate.shared?.updateStatusItemVisibility(showMenuBarIcon)
+        }
     }
     
     @Published public var hoverDelay: Double {

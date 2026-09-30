@@ -22,6 +22,22 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusItem()
     }
     
+    public func updateStatusItemVisibility(_ isVisible: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if isVisible {
+                if self.statusItem == nil {
+                    self.setupStatusItem()
+                }
+            } else {
+                if let item = self.statusItem {
+                    NSStatusBar.system.removeStatusItem(item)
+                    self.statusItem = nil
+                }
+            }
+        }
+    }
+    
     public func setupStatusItem() {
         guard SettingsManager.shared.showMenuBarIcon else { return }
         
