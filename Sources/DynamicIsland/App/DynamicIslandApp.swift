@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-public class AppDelegate: NSObject, NSApplicationDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     public static var shared: AppDelegate!
     public var statusItem: NSStatusItem?
     
@@ -63,6 +63,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
         
+        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
+        loginItem.state = SettingsManager.shared.launchAtLogin ? .on : .off
+        loginItem.target = self
+        menu.addItem(loginItem)
+        
         let demoItem = NSMenuItem(title: "Play Demo Track", action: #selector(playDemo), keyEquivalent: "")
         demoItem.target = self
         menu.addItem(demoItem)
@@ -73,6 +78,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
         
+        menu.delegate = self
         statusItem?.menu = menu
     }
     
@@ -88,6 +94,18 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc public func openPreferences() {
         SettingsWindowController.shared.show()
+    }
+    
+    @objc public func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        let newState = !SettingsManager.shared.launchAtLogin
+        SettingsManager.shared.setLaunchAtLogin(newState)
+        sender.state = newState ? .on : .off
+    }
+    
+    public func menuWillOpen(_ menu: NSMenu) {
+        if let loginItem = menu.item(withTitle: "Launch at Login") {
+            loginItem.state = SettingsManager.shared.launchAtLogin ? .on : .off
+        }
     }
     
     @objc public func playDemo() {

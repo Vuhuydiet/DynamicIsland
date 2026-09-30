@@ -127,9 +127,20 @@ public struct SettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .padding(.horizontal, 14)
             
-            // Bottom Row: Menu Bar & Quit
+            // Bottom Row: Launch at Login, Menu Bar & Quit
             HStack(spacing: 12) {
-                Toggle("Show in Menu Bar", isOn: $settings.showMenuBarIcon)
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { settings.launchAtLogin },
+                    set: { settings.setLaunchAtLogin($0) }
+                ))
+                .toggleStyle(.switch)
+                .scaleEffect(0.75)
+                .font(IslandFont.caption)
+                .foregroundColor(.white.opacity(0.8))
+                
+                Spacer()
+                
+                Toggle("Menu Bar", isOn: $settings.showMenuBarIcon)
                     .toggleStyle(.switch)
                     .scaleEffect(0.75)
                     .font(IslandFont.caption)
@@ -137,7 +148,7 @@ public struct SettingsView: View {
                 
                 Spacer()
                 
-                Button("Quit Dynamic Island") {
+                Button("Quit") {
                     NSApplication.shared.terminate(nil)
                 }
                 .font(IslandFont.caption)

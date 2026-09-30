@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import ServiceManagement
 
 public enum NotchStyle: String, CaseIterable, Identifiable {
     case auto = "Auto Detect"
@@ -104,6 +105,9 @@ public class SettingsManager: ObservableObject {
         didSet { defaults.set(liveActivityCompact, forKey: "liveActivityCompact") }
     }
     
+    // MARK: - Open / Launch at Login
+    @Published public var launchAtLogin: Bool = false
+    
     private init() {
         let savedStyle = defaults.string(forKey: "notchStyle").flatMap(NotchStyle.init) ?? .auto
         let savedTrigger = defaults.string(forKey: "expandTrigger").flatMap(ExpandTrigger.init) ?? .hoverAndClick
@@ -128,5 +132,62 @@ public class SettingsManager: ObservableObject {
         self.customWidthOffset = defaults.object(forKey: "customWidthOffset") as? Double ?? 0.0
         self.customYOffset = defaults.object(forKey: "customYOffset") as? Double ?? 0.0
         self.liveActivityCompact = defaults.object(forKey: "liveActivityCompact") as? Bool ?? true
+        
+        var isEnabled = defaults.bool(forKey: "launchAtLogin")
+        if #available(macOS 13.0, *) {
+            if SMAppService.mainApp.status == .enabled {
+                isEnabled = true
+            }
+        }
+        self.launchAtLogin = isEnabled
+    }
+    
+    public func setLaunchAtLogin(_ enable: Bool) {
+        self.launchAtLogin = enable
+        defaults.set(enable, forKey: "launchAtLogin")
+        
+        // 1. Modern macOS 13+ ServiceManagement SMAppService
+        if #available(macOS 13.0, *) {
+            do {
+                if enable {
+                    if SMAppService.mainApp.status != .enabled {
+                        try SMAppService.mainApp.register()
+                    }
+                } else {
+                    if SMAppService.mainApp.status == .enabled {
+                        try SMAppService.mainApp.unregister()
+                    }
+                }
+            } catch {
+                print("SMAppService register note: \(error)")
+            }
+        }
+        
+        // 2. Synchronize with macOS System Events login items in background
+        let bundlePath = Bundle.main.bundlePath
+        let appName = (Bundle.main.infoDictionary?["CFBundleName"] as? String) ?? "DynamicIsland"
+        
+        DispatchQueue.global(qos: .utility).async {
+            let script: String
+            if enable {
+                script = "tell application \"System Events\" to make login item at end with properties {path:\"\(bundlePath)\", hidden:false, name:\"\(appName)\"}"
+            } else {
+                script = "tell application \"System Events\" to delete (every login item whose name is \"\(appName)\")"
+            }
+            if let appleScript = NSAppleScript(source: script) {
+                var err: NSDictionary?
+                appleScript.executeAndReturnError(&err)
+            }
+        }
+    }
+    
+    public func refreshLaunchAtLoginStatus() {
+        if #available(macOS 13.0, *) {
+            if SMAppService.mainApp.status == .enabled {
+                self.launchAtLogin = true
+                return
+            }
+        }
+        self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")
     }
 }

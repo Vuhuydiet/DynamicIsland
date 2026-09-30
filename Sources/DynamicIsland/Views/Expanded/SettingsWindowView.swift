@@ -147,6 +147,22 @@ public struct GeneralSettingsTab: View {
                 .padding(8)
             }
             
+            // Startup & Login Group
+            GroupBox(label: Label("Startup & Login", systemImage: "power").font(.system(size: 12, weight: .semibold))) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Launch Dynamic Island at Login", isOn: Binding(
+                        get: { settings.launchAtLogin },
+                        set: { settings.setLaunchAtLogin($0) }
+                    ))
+                    .font(.system(size: 12))
+                    
+                    Text("Automatically opens Dynamic Island when your Mac boots or you log in.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+            
             // Menu Bar Group
             GroupBox(label: Label("Menu Bar Item", systemImage: "menubar.rectangle").font(.system(size: 12, weight: .semibold))) {
                 VStack(alignment: .leading, spacing: 8) {

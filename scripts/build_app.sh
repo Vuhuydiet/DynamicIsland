@@ -32,6 +32,7 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools xcrun swiftc \
     -framework IOKit \
     -framework AudioToolbox \
     -framework UserNotifications \
+    -framework ServiceManagement \
     $SWIFT_FILES \
     -o "$MACOS_DIR/$APP_NAME"
 

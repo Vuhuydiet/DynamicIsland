@@ -65,11 +65,12 @@ An ultra-sleek, native macOS Dynamic Island application built in Swift and Swift
 ---
 
 ### ⚙️ Preferences & Customization
+- **Launch at Login (Start with macOS):** Option to automatically start Dynamic Island whenever your Mac turns on or you log in (managed via Apple's modern `SMAppService` and macOS Login Items).
 - **Island Mode:** Auto Detect, Notch Attached, or Floating Pill.
 - **Expansion Trigger:** Hover & Click or Click Only (with customizable hover delay).
 - **Dedicated Settings Window:** Standalone native window with categorized tabs (General, Sound Effects, Geometry & Notch, Shortcuts, About) with fine-tuning offsets and hardware detection.
 - **Rich Sound Settings:** Volume slider (0-100%), sound schemes (*macOS Classic*, *Modern Clicks*, *Subtle/Soft*), per-event audio toggles (expand, collapse, tab switch, drop, timer alert), and test audition buttons.
-- **Menu Bar Extra:** Sleek menu bar item for toggling the island, switching tabs, and opening Preferences.
+- **Menu Bar Extra:** Sleek menu bar item for toggling the island, switching tabs, toggling Launch at Login, and opening Preferences.
 
 ---
 
