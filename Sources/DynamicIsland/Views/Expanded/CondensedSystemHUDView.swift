@@ -6,7 +6,7 @@ public struct CondensedSystemHUDView: View {
     public init() {}
     
     public var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             // 1. CPU Load
             InlineMetricBadge(
                 icon: "cpu",
@@ -56,19 +56,19 @@ public struct InlineMetricBadge: View {
     }
     
     public var body: some View {
-        HStack(spacing: 3) {
+        VStack(spacing: 2) {
             Image(systemName: icon)
-                .font(.system(size: 8.5, weight: .bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundColor(tint)
             
             Text(value)
-                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundColor(.white.opacity(0.92))
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.7)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3.5)
+        .padding(.horizontal, 5.5)
+        .padding(.vertical, 3)
         .background(Color.white.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .help(helpText)
