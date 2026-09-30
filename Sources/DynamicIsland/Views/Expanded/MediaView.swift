@@ -9,22 +9,35 @@ public struct MediaView: View {
         VStack(spacing: 14) {
             // MARK: - Track Info & Artwork
             HStack(spacing: 14) {
-                // Album Art / Disc
+                // Album Art / Video Thumbnail / Disc
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.pink.opacity(0.8), Color.purple.opacity(0.8)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    if let artData = mediaManager.currentTrack.artworkData,
+                       let nsImg = NSImage(data: artData) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 54, height: 54)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(color: mediaManager.currentTrack.source.accentColor.opacity(0.3), radius: 8, y: 4)
+                    } else {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        mediaManager.currentTrack.source.accentColor.opacity(0.85),
+                                        mediaManager.currentTrack.source.accentColor.opacity(0.5)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .frame(width: 54, height: 54)
-                        .shadow(color: .pink.opacity(0.3), radius: 8, y: 4)
-                    
-                    Image(systemName: mediaManager.currentTrack.isPlaying ? "music.note" : "music.note.list")
-                        .font(IslandFont.iconHero)
-                        .foregroundColor(.white)
+                            .frame(width: 54, height: 54)
+                            .shadow(color: mediaManager.currentTrack.source.accentColor.opacity(0.35), radius: 8, y: 4)
+                        
+                        Image(systemName: mediaManager.currentTrack.source.iconName)
+                            .font(IslandFont.iconHero)
+                            .foregroundColor(.white)
+                    }
                 }
                 
                 // Track metadata
@@ -37,7 +50,7 @@ public struct MediaView: View {
                         
                         Spacer()
                         
-                        EqualizerVisualizerView(tint: .pink, maxHeight: 12)
+                        EqualizerVisualizerView(tint: mediaManager.currentTrack.source.accentColor, maxHeight: 12)
                     }
                     
                     Text(mediaManager.currentTrack.artist)
@@ -48,10 +61,11 @@ public struct MediaView: View {
                     HStack(spacing: 4) {
                         Image(systemName: mediaManager.currentTrack.source.iconName)
                             .font(IslandFont.iconMicro)
+                            .foregroundColor(mediaManager.currentTrack.source.accentColor)
                         Text(mediaManager.currentTrack.source.rawValue)
                             .font(IslandFont.caption)
                     }
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.white.opacity(0.6))
                 }
             }
             .padding(.horizontal, 14)

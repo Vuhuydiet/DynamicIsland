@@ -14,12 +14,17 @@ An ultra-sleek, native macOS Dynamic Island application built in Swift and Swift
 
 ---
 
-### 🎵 Music & Media Player Hub
-- **Now Playing:** Real-time track information (Song title, Artist, Album) from **Apple Music** and **Spotify**.
-- **Interactive Scrubber:** Drag to seek through track duration.
-- **Playback Controls:** Previous track, Play/Pause, Next track, and quick jump to the active music app.
-- **Live Audio Visualizer:** 7-bar bouncing audio equalizer frequency spectrum.
-- **Demo Mode:** Built-in demo player with sample tracks to test animations even when music apps aren't playing.
+### 🎵 Universal Media & Video Player Hub
+- **Universal Source Support:** Automatically listens to **every video and audio source** playing on your Mac:
+  - 🎬 **Web Streaming & Browsers:** **YouTube**, **Netflix**, **Twitch**, and **Vimeo** across Google Chrome, Safari, Brave, Arc, and Edge.
+  - 📺 **Local Video Players:** **QuickTime Player**, **VLC Media Player**, and **IINA**.
+  - 🎧 **Music Apps:** **Apple Music**, **Spotify**, Tidal, and Podcasts.
+  - 🔊 **System-wide NowPlaying:** Native bridge to macOS `MediaRemote.framework` for universal OS audio/video session tracking.
+- **Dynamic Brand Colors & Badges:** Branded gradients, icons, and real video/album artwork (YouTube red `play.rectangle`, QuickTime cyan `film`, VLC orange `cone`, Spotify green waves, Apple Music pink notes).
+- **Interactive Scrubber:** Drag to seek through playback position.
+- **Universal Playback Controls:** Previous track, Play/Pause, Next track, and quick jump to the active source app or browser.
+- **Audio Equalizer Visualizer:** 7-bar audio frequency spectrum tinted with the active media source's brand color.
+- **Demo Mode:** Built-in demo player with sample tracks to preview animations anytime.
 
 ---
 

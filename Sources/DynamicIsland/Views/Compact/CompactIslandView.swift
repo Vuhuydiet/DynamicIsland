@@ -53,9 +53,9 @@ public struct CompactIslandView: View {
                         .font(IslandFont.metricNumeric)
                         .foregroundColor(.blue)
                 } else if mediaManager.currentTrack.isPlaying {
-                    Image(systemName: "music.note")
+                    Image(systemName: mediaManager.currentTrack.source.iconName)
                         .font(IslandFont.iconMicro)
-                        .foregroundColor(.pink)
+                        .foregroundColor(mediaManager.currentTrack.source.accentColor)
                     Text(mediaManager.currentTrack.title)
                         .font(IslandFont.caption)
                         .foregroundColor(.white.opacity(0.85))
@@ -84,7 +84,7 @@ public struct CompactIslandView: View {
             // MARK: - Right Ear (Outside the Notch on the Right)
             HStack(spacing: 4) {
                 if mediaManager.currentTrack.isPlaying {
-                    EqualizerVisualizerView(tint: .green, maxHeight: 10)
+                    EqualizerVisualizerView(tint: mediaManager.currentTrack.source.accentColor, maxHeight: 10)
                 } else if timerManager.isTimerRunning {
                     ZStack {
                         Circle()
