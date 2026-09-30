@@ -59,13 +59,11 @@ public struct IslandContainerView: View {
             switch appState.activeTab {
             case .media: contentH = 165.0
             case .dropShelf: contentH = 155.0
-            case .system: contentH = 175.0
             case .timer: contentH = 165.0
             case .clipboard: contentH = 160.0
             case .notes: contentH = 155.0
-            case .settings: contentH = 165.0
             }
-            return notchTopInset + 40.0 + contentH + 10.0
+            return notchTopInset + 36.0 + 38.0 + contentH + 12.0
         } else {
             return isNotchMode ? max(34.0, detector.currentNotch.notchHeight) : 34.0
         }

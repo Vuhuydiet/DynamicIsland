@@ -158,8 +158,20 @@ public struct ExpandedIslandView: View {
                 .padding(.top, 4)
             }
             
-            // MARK: - Row 2: Tab Bar (Placed COMPLETELY BELOW the physical notch)
-            HStack(spacing: 5) {
+            // MARK: - PART 1 (TOP): Condensed System HUD (CPU, Memory, Battery, Disk)
+            CondensedSystemHUDView()
+                .padding(.top, 4)
+                .padding(.bottom, 6)
+            
+            // Subtle Section Divider
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .frame(height: 1)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 6)
+            
+            // MARK: - PART 2 (BOTTOM): Tab Bar (Media, Drop Shelf, Timer, Clipboard, Notes)
+            HStack(spacing: 6) {
                 ForEach(IslandTab.allCases) { tab in
                     Button(action: {
                         SoundManager.shared.play(.click)
@@ -177,7 +189,7 @@ public struct ExpandedIslandView: View {
                             }
                         }
                         .foregroundColor(appState.activeTab == tab ? .white : .white.opacity(0.55))
-                        .padding(.horizontal, appState.activeTab == tab ? 10 : 8)
+                        .padding(.horizontal, appState.activeTab == tab ? 12 : 9)
                         .padding(.vertical, 6)
                         .background(
                             appState.activeTab == tab ?
@@ -190,33 +202,28 @@ public struct ExpandedIslandView: View {
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.top, 4)
             .padding(.bottom, 6)
             
-            // Subtle Divider
+            // Subtle Content Divider
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.white.opacity(0.06))
                 .frame(height: 1)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 6)
             
-            // MARK: - Row 3: Tab Content Router
+            // MARK: - Tab Content Router
             ZStack {
                 switch appState.activeTab {
                 case .media:
                     MediaView()
                 case .dropShelf:
                     DropShelfView()
-                case .system:
-                    SystemHUDView()
                 case .timer:
                     TimerView()
                 case .clipboard:
                     ClipboardView()
                 case .notes:
                     NotesView()
-                case .settings:
-                    SettingsView()
                 }
             }
             .transition(.opacity.combined(with: .scale(scale: 0.98)))

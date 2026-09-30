@@ -36,14 +36,14 @@ An ultra-sleek, native macOS Dynamic Island application built in Swift and Swift
 
 ---
 
-### ⚡ System HUD & Diagnostics
-- **Live Metrics:** Real-time CPU load percentage ring, RAM memory usage (GB used vs total), and Battery percentage with charging indicator.
-- **System Volume Slider:** Smooth interactive audio volume control.
-- **Quick Action Toggles:**
-  - 🔒 **Lock Screen** (`Control + Command + Q`)
-  - 💤 **Sleep Display**
-  - 🔇 **Mute / Unmute Audio**
-  - 🗑️ **Empty Trash**
+### ⚡ Permanent Condensed System HUD (Top Section)
+The expanded island features a **two-part split architecture**:
+- **Part 1 (Top Section):** Always-visible condensed 4-pill system telemetry strip:
+  - ⚙️ **CPU:** Real-time percentage load with colored load gauge (cyan / orange / red).
+  - 💾 **Memory (RAM):** Used memory in gigabytes (e.g. `14.2 GB`) with memory ring.
+  - 🔋 **Battery:** Percentage with live charging status (`⚡ 98%`).
+  - 💽 **Disk:** Root volume storage usage (e.g. `262 GB`) with usage ring.
+- **Part 2 (Bottom Section):** Fast tab bar switching between your working modules: **Media**, **Drop Shelf**, **Timer**, **Clipboard**, and **Notes**.
 
 ---
 

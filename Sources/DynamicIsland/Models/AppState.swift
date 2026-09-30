@@ -2,14 +2,12 @@ import Foundation
 import SwiftUI
 import Combine
 
-public enum IslandTab: String, CaseIterable, Identifiable {
-    case media = "Music"
+public enum IslandTab: String, CaseIterable, Identifiable, Sendable {
+    case media = "Media"
     case dropShelf = "Drop Shelf"
-    case system = "System"
     case timer = "Timer"
     case clipboard = "Clipboard"
     case notes = "Notes"
-    case settings = "Settings"
     
     public var id: String { rawValue }
     
@@ -17,11 +15,9 @@ public enum IslandTab: String, CaseIterable, Identifiable {
         switch self {
         case .media: return "music.note"
         case .dropShelf: return "tray.and.arrow.down.fill"
-        case .system: return "gauge.with.needle.fill"
         case .timer: return "timer"
         case .clipboard: return "doc.on.clipboard.fill"
         case .notes: return "note.text"
-        case .settings: return "gearshape.fill"
         }
     }
 }

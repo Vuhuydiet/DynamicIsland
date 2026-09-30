@@ -121,7 +121,7 @@ public class WindowController: ObservableObject {
             if let screen = NSScreen.main {
                 let mousePoint = NSEvent.mouseLocation
                 let islandW: CGFloat = 500.0
-                let islandH: CGFloat = 250.0
+                let islandH: CGFloat = 300.0
                 let islandRect = NSRect(
                     x: screen.frame.midX - (islandW / 2.0),
                     y: screen.frame.maxY - islandH,

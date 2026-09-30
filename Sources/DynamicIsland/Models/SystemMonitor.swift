@@ -10,6 +10,9 @@ public struct SystemStats {
     public var batteryPercent: Int = 100
     public var isCharging: Bool = false
     public var isPluggedIn: Bool = false
+    public var diskUsedGB: Double = 0.0
+    public var diskTotalGB: Double = 0.0
+    public var diskPercent: Int = 0
     public var wifiName: String = "Connected"
     public var isMuted: Bool = false
     public var systemVolume: Double = 0.5
@@ -44,6 +47,7 @@ public class SystemMonitor: ObservableObject {
             let cpu = self.calculateCpuUsage()
             let (usedRam, totalRam) = self.getMemoryUsage()
             let (batteryPct, charging, plugged) = self.getBatteryInfo()
+            let (diskUsed, diskTotal, diskPct) = self.getDiskUsage()
             let vol = self.getSystemVolume()
             
             DispatchQueue.main.async {
@@ -53,6 +57,9 @@ public class SystemMonitor: ObservableObject {
                 self.stats.batteryPercent = batteryPct
                 self.stats.isCharging = charging
                 self.stats.isPluggedIn = plugged
+                self.stats.diskUsedGB = diskUsed
+                self.stats.diskTotalGB = diskTotal
+                self.stats.diskPercent = diskPct
                 self.stats.systemVolume = vol
             }
         }
@@ -149,6 +156,23 @@ public class SystemMonitor: ObservableObject {
             return (pct, isCharging, isPlugged)
         }
         return (100, false, true)
+    }
+    
+    // MARK: - Disk Calculation
+    private func getDiskUsage() -> (Double, Double, Int) {
+        var stat = statfs()
+        if statfs("/", &stat) == 0 {
+            let bsize = Double(stat.f_bsize)
+            let totalBytes = Double(stat.f_blocks) * bsize
+            let freeBytes = Double(stat.f_bavail) * bsize
+            let usedBytes = totalBytes - freeBytes
+            
+            let totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
+            let usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0)
+            let pct = totalGB > 0 ? Int((usedGB / totalGB) * 100.0) : 0
+            return (usedGB, totalGB, pct)
+        }
+        return (0.0, 0.0, 0)
     }
     
     // MARK: - Volume Controls
