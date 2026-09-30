@@ -3,12 +3,12 @@ import SwiftUI
 public struct CondensedSystemHUDView: View {
     @ObservedObject var monitor = SystemMonitor.shared
     
-    private let badgeWidth: CGFloat = 42.0
+    private let badgeWidth: CGFloat = 38.0
     
     public init() {}
     
     public var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3.5) {
             // 1. CPU Load
             InlineMetricBadge(
                 icon: "cpu",
@@ -55,7 +55,7 @@ public struct InlineMetricBadge: View {
     public let helpText: String
     public let width: CGFloat
     
-    public init(icon: String, value: String, tint: Color, helpText: String, width: CGFloat = 42.0) {
+    public init(icon: String, value: String, tint: Color, helpText: String, width: CGFloat = 38.0) {
         self.icon = icon
         self.value = value
         self.tint = tint

@@ -26,7 +26,7 @@ public struct ExpandedIslandView: View {
     }
     
     private var expandedWidth: CGFloat {
-        580.0
+        600.0
     }
     
     private var earWidth: CGFloat {
@@ -38,56 +38,80 @@ public struct ExpandedIslandView: View {
             // MARK: - Row 1: Notch Area (Left & Right Ears around the physical hardware notch)
             if isNotchMode {
                 HStack(spacing: 0) {
-                    // Left Ear: System Stats (CPU, RAM, Battery, Disk)
-                    CondensedSystemHUDView()
-                        .padding(.leading, 8)
-                        .frame(width: earWidth, alignment: .leading)
+                    // Left Ear: Brand / Title
+                    HStack(spacing: 5) {
+                        Image(systemName: "apple.logo")
+                            .font(IslandFont.iconSmall)
+                            .foregroundColor(.white.opacity(0.45))
+                        Text("Dynamic Island")
+                            .font(IslandFont.caption)
+                            .foregroundColor(.white.opacity(0.85))
+                            .lineLimit(1)
+                    }
+                    .padding(.leading, 12)
+                    .frame(width: earWidth, alignment: .leading)
                     
                     // Center Cutout: Strictly matching the hardware notch dimensions
                     Color.clear
                         .frame(width: notchWidth, height: notchRowHeight)
                     
-                    // Right Ear: Actions (Pin)
-                    Button(action: {
-                        SoundManager.shared.play(.click)
-                        appState.isPinned.toggle()
-                    }) {
-                        Image(systemName: appState.isPinned ? "pin.fill" : "pin")
-                            .font(IslandFont.iconRegular)
-                            .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
-                            .padding(5)
-                            .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
-                            .clipShape(Circle())
+                    // Right Ear: System Stats & Pin Button
+                    HStack(spacing: 6) {
+                        CondensedSystemHUDView()
+                        
+                        Button(action: {
+                            SoundManager.shared.play(.click)
+                            appState.isPinned.toggle()
+                        }) {
+                            Image(systemName: appState.isPinned ? "pin.fill" : "pin")
+                                .font(IslandFont.iconRegular)
+                                .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
+                                .padding(5)
+                                .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
                     }
-                    .buttonStyle(.plain)
-                    .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
-                    .padding(.trailing, 12)
+                    .padding(.trailing, 10)
                     .frame(width: earWidth, alignment: .trailing)
                 }
                 .frame(width: expandedWidth, height: notchRowHeight)
             } else {
                 // Floating Mode Header
                 HStack {
-                    // Left: System Stats (CPU, RAM, Battery, Disk)
-                    CondensedSystemHUDView()
-                        .padding(.leading, 12)
+                    // Left: Brand / Title
+                    HStack(spacing: 5) {
+                        Image(systemName: "apple.logo")
+                            .font(IslandFont.iconSmall)
+                            .foregroundColor(.white.opacity(0.45))
+                        Text("Dynamic Island")
+                            .font(IslandFont.caption)
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .padding(.leading, 14)
                     
                     Spacer()
                     
-                    Button(action: {
-                        SoundManager.shared.play(.click)
-                        appState.isPinned.toggle()
-                    }) {
-                        Image(systemName: appState.isPinned ? "pin.fill" : "pin")
-                            .font(IslandFont.iconRegular)
-                            .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
-                            .padding(5)
-                            .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
-                            .clipShape(Circle())
+                    // Right: System Stats & Pin Button
+                    HStack(spacing: 6) {
+                        CondensedSystemHUDView()
+                        
+                        Button(action: {
+                            SoundManager.shared.play(.click)
+                            appState.isPinned.toggle()
+                        }) {
+                            Image(systemName: appState.isPinned ? "pin.fill" : "pin")
+                                .font(IslandFont.iconRegular)
+                                .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
+                                .padding(5)
+                                .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
                     }
-                    .buttonStyle(.plain)
-                    .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
-                    .padding(.trailing, 14)
+                    .padding(.trailing, 12)
                 }
                 .frame(height: 32)
                 .padding(.top, 4)
