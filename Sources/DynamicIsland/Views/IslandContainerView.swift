@@ -41,7 +41,7 @@ public struct IslandContainerView: View {
     // Dynamic width calculation
     private var islandWidth: CGFloat {
         if appState.isExpanded {
-            return 560.0
+            return 580.0
         } else {
             if isNotchMode {
                 return notchWidth + compactLeftEarWidth + compactRightEarWidth + 16.0 + CGFloat(settings.customWidthOffset)

@@ -26,7 +26,7 @@ public struct ExpandedIslandView: View {
     }
     
     private var expandedWidth: CGFloat {
-        560.0
+        580.0
     }
     
     private var earWidth: CGFloat {

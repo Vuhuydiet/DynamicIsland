@@ -62,7 +62,7 @@ public class WindowController: ObservableObject {
     public func createAndShowPanel() {
         guard let screen = NSScreen.main else { return }
         
-        let panelWidth: CGFloat = 600.0
+        let panelWidth: CGFloat = 620.0
         let panelHeight: CGFloat = 340.0
         
         let screenRect = screen.frame
@@ -83,7 +83,7 @@ public class WindowController: ObservableObject {
     public func repositionPanel() {
         guard let screen = NSScreen.main, let panel = self.panel else { return }
         
-        let panelWidth: CGFloat = 600.0
+        let panelWidth: CGFloat = 620.0
         let panelHeight: CGFloat = 340.0
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
@@ -120,7 +120,7 @@ public class WindowController: ObservableObject {
             
             if let screen = NSScreen.main {
                 let mousePoint = NSEvent.mouseLocation
-                let islandW: CGFloat = 560.0
+                let islandW: CGFloat = 580.0
                 let islandH: CGFloat = 320.0
                 let islandRect = NSRect(
                     x: screen.frame.midX - (islandW / 2.0),
