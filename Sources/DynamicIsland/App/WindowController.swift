@@ -18,6 +18,7 @@ public class DynamicIslandPanel: NSPanel {
         self.isMovable = false
         self.isMovableByWindowBackground = false
         self.hidesOnDeactivate = false
+        self.acceptsMouseMovedEvents = true
     }
     
     // Allow panel to receive key events for text fields in notes/clipboard
@@ -36,6 +37,7 @@ public class WindowController: ObservableObject {
     public var panel: DynamicIslandPanel?
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
+    private var globalMouseMonitor: Any?
     
     private init() {}
     
@@ -109,10 +111,37 @@ public class WindowController: ObservableObject {
                 }
             }
         }
+        
+        // Global mouse movement monitor: collapses island immediately when cursor leaves its bounds
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            guard let _ = self else { return }
+            let appState = AppState.shared
+            guard appState.isExpanded && !appState.isPinned else { return }
+            
+            if let screen = NSScreen.main {
+                let mousePoint = NSEvent.mouseLocation
+                let islandW: CGFloat = 500.0
+                let islandH: CGFloat = 250.0
+                let islandRect = NSRect(
+                    x: screen.frame.midX - (islandW / 2.0),
+                    y: screen.frame.maxY - islandH,
+                    width: islandW,
+                    height: islandH
+                )
+                if !islandRect.contains(mousePoint) {
+                    DispatchQueue.main.async {
+                        if appState.isExpanded && !appState.isPinned {
+                            appState.handleMouseLeave()
+                        }
+                    }
+                }
+            }
+        }
     }
     
     deinit {
         if let g = globalEventMonitor { NSEvent.removeMonitor(g) }
         if let l = localEventMonitor { NSEvent.removeMonitor(l) }
+        if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
     }
 }

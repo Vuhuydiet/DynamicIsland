@@ -88,18 +88,12 @@ public class AppState: ObservableObject {
     public func handleMouseLeave() {
         isHovering = false
         hoverWorkItem?.cancel()
+        collapseWorkItem?.cancel()
         
         guard !isPinned else { return }
         guard isExpanded else { return }
         
-        collapseWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self = self, !self.isHovering, !self.isPinned else { return }
-            self.collapse()
-        }
-        collapseWorkItem = work
-        // Small grace period before collapsing so user doesn't accidentally dismiss it
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+        collapse()
     }
     
     public func handleDragEntered() {

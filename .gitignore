@@ -4,6 +4,7 @@ build/
 *.app/
 *.dSYM/
 .swiftpm/
+main
 
 # macOS system files
 .DS_Store

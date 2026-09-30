@@ -110,8 +110,8 @@ public struct IslandContainerView: View {
             .frame(width: islandWidth, height: islandHeight)
             // CLIP SHAPE: Strictly guarantees that zero pixels ever overflow outside the capsule!
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .animation(.spring(response: 0.36, dampingFraction: 0.78, blendDuration: 0), value: appState.isExpanded)
-            .animation(.spring(response: 0.36, dampingFraction: 0.78, blendDuration: 0), value: appState.activeTab)
+            .animation(.spring(response: 0.28, dampingFraction: 0.82, blendDuration: 0), value: appState.isExpanded)
+            .animation(.spring(response: 0.28, dampingFraction: 0.82, blendDuration: 0), value: appState.activeTab)
             .onHover { hovering in
                 if hovering {
                     appState.handleMouseEnter()
