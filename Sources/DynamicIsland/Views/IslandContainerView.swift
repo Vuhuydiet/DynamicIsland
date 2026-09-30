@@ -41,7 +41,7 @@ public struct IslandContainerView: View {
     // Dynamic width calculation
     private var islandWidth: CGFloat {
         if appState.isExpanded {
-            return 500.0
+            return 560.0
         } else {
             if isNotchMode {
                 return notchWidth + compactLeftEarWidth + compactRightEarWidth + 16.0 + CGFloat(settings.customWidthOffset)
@@ -63,7 +63,7 @@ public struct IslandContainerView: View {
             case .clipboard: contentH = 160.0
             case .notes: contentH = 155.0
             }
-            return notchTopInset + 36.0 + 38.0 + contentH + 12.0
+            return notchTopInset + 38.0 + contentH + 16.0
         } else {
             return isNotchMode ? max(34.0, detector.currentNotch.notchHeight) : 34.0
         }

@@ -25,8 +25,12 @@ public struct ExpandedIslandView: View {
         max(170.0, detector.currentNotch.notchWidth)
     }
     
+    private var expandedWidth: CGFloat {
+        560.0
+    }
+    
     private var earWidth: CGFloat {
-        max(0, (500.0 - notchWidth) / 2.0)
+        max(0, (expandedWidth - notchWidth) / 2.0)
     }
     
     public var body: some View {
@@ -34,18 +38,10 @@ public struct ExpandedIslandView: View {
             // MARK: - Row 1: Notch Area (Left & Right Ears around the physical hardware notch)
             if isNotchMode {
                 HStack(spacing: 0) {
-                    // Left Ear: Brand / Status (strictly to the left of the notch)
-                    HStack(spacing: 5) {
-                        Image(systemName: "apple.logo")
-                            .font(IslandFont.iconSmall)
-                            .foregroundColor(.white.opacity(0.45))
-                        Text("Dynamic Island")
-                            .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.85))
-                            .lineLimit(1)
-                    }
-                    .padding(.leading, 12)
-                    .frame(width: earWidth, alignment: .leading)
+                    // Left Ear: System Stats (CPU, RAM, Battery, Disk)
+                    CondensedSystemHUDView()
+                        .padding(.leading, 8)
+                        .frame(width: earWidth, alignment: .leading)
                     
                     // Center Cutout: Strictly matching the hardware notch dimensions
                     Color.clear
@@ -84,19 +80,13 @@ public struct ExpandedIslandView: View {
                     .padding(.trailing, 12)
                     .frame(width: earWidth, alignment: .trailing)
                 }
-                .frame(width: 500, height: notchRowHeight)
+                .frame(width: expandedWidth, height: notchRowHeight)
             } else {
                 // Floating Mode Header
                 HStack {
-                    HStack(spacing: 5) {
-                        Image(systemName: "apple.logo")
-                            .font(IslandFont.iconSmall)
-                            .foregroundColor(.white.opacity(0.45))
-                        Text("Dynamic Island")
-                            .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.85))
-                    }
-                    .padding(.leading, 14)
+                    // Left: System Stats (CPU, RAM, Battery, Disk)
+                    CondensedSystemHUDView()
+                        .padding(.leading, 12)
                     
                     Spacer()
                     
@@ -129,20 +119,16 @@ public struct ExpandedIslandView: View {
                     }
                     .padding(.trailing, 14)
                 }
-                .frame(height: 28)
+                .frame(height: 32)
                 .padding(.top, 4)
             }
             
-            // MARK: - PART 1 (TOP): Condensed System HUD (CPU, Memory, Battery, Disk)
-            CondensedSystemHUDView()
-                .padding(.top, 4)
-                .padding(.bottom, 6)
-            
-            // Subtle Section Divider
+            // Subtle Header Divider
             Rectangle()
                 .fill(Color.white.opacity(0.1))
                 .frame(height: 1)
                 .padding(.horizontal, 14)
+                .padding(.top, 4)
                 .padding(.bottom, 6)
             
             // MARK: - PART 2 (BOTTOM): Tab Bar (Media, Drop Shelf, Timer, Clipboard, Notes)
