@@ -38,16 +38,23 @@ public struct ExpandedIslandView: View {
             // MARK: - Row 1: Notch Area (Left & Right Ears around the physical hardware notch)
             if isNotchMode {
                 HStack(spacing: 0) {
-                    // Left Ear: Brand / Title
-                    HStack(spacing: 5) {
-                        Image(systemName: "apple.logo")
-                            .font(IslandFont.iconSmall)
-                            .foregroundColor(.white.opacity(0.45))
-                        Text("Dynamic Island")
-                            .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.85))
-                            .lineLimit(1)
+                    // Left Ear: Brand / Title (Click to open Settings)
+                    Button(action: {
+                        SoundManager.shared.play(.click)
+                        SettingsWindowController.shared.show()
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "apple.logo")
+                                .font(IslandFont.iconSmall)
+                                .foregroundColor(.white.opacity(0.45))
+                            Text("Dynamic Island")
+                                .font(IslandFont.caption)
+                                .foregroundColor(.white.opacity(0.85))
+                                .lineLimit(1)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .help("Open Preferences (⌘,)")
                     .padding(.leading, 12)
                     .frame(width: earWidth, alignment: .leading)
                     
@@ -80,15 +87,22 @@ public struct ExpandedIslandView: View {
             } else {
                 // Floating Mode Header
                 HStack {
-                    // Left: Brand / Title
-                    HStack(spacing: 5) {
-                        Image(systemName: "apple.logo")
-                            .font(IslandFont.iconSmall)
-                            .foregroundColor(.white.opacity(0.45))
-                        Text("Dynamic Island")
-                            .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.85))
+                    // Left: Brand / Title (Click to open Settings)
+                    Button(action: {
+                        SoundManager.shared.play(.click)
+                        SettingsWindowController.shared.show()
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "apple.logo")
+                                .font(IslandFont.iconSmall)
+                                .foregroundColor(.white.opacity(0.45))
+                            Text("Dynamic Island")
+                                .font(IslandFont.caption)
+                                .foregroundColor(.white.opacity(0.85))
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .help("Open Preferences (⌘,)")
                     .padding(.leading, 14)
                     
                     Spacer()

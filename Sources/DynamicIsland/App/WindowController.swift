@@ -93,21 +93,32 @@ public class WindowController: ObservableObject {
     }
     
     private func setupEventMonitors() {
-        // Global monitor for Esc key or toggle hotkey
+        // Local monitor for Esc key, Command + Comma, etc.
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Esc key collapses island
             if event.keyCode == 53 && AppState.shared.isExpanded {
                 AppState.shared.collapse(force: true)
                 return nil
             }
+            // Command + Comma opens preferences
+            if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "," {
+                SettingsWindowController.shared.show()
+                return nil
+            }
             return event
         }
         
-        // Listen for Option + Command + I to toggle island
+        // Listen for Option + Command + I to toggle island or Option + Command + Comma for settings
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
-            if event.modifierFlags.contains([.command, .option]) && event.charactersIgnoringModifiers == "i" {
-                DispatchQueue.main.async {
-                    AppState.shared.toggleExpand()
+            if event.modifierFlags.contains([.command, .option]) {
+                if event.charactersIgnoringModifiers == "i" {
+                    DispatchQueue.main.async {
+                        AppState.shared.toggleExpand()
+                    }
+                } else if event.charactersIgnoringModifiers == "," {
+                    DispatchQueue.main.async {
+                        SettingsWindowController.shared.show()
+                    }
                 }
             }
         }
