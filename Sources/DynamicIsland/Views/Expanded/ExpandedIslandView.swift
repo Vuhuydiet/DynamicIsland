@@ -80,19 +80,6 @@ public struct ExpandedIslandView: View {
                         }
                         .buttonStyle(.plain)
                         .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
-                        
-                        Button(action: {
-                            appState.collapse(force: true)
-                        }) {
-                            Image(systemName: "chevron.up")
-                                .font(IslandFont.iconSmall)
-                                .foregroundColor(.white.opacity(0.65))
-                                .padding(5)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Collapse")
                     }
                     .padding(.trailing, 12)
                     .frame(width: earWidth, alignment: .trailing)
@@ -136,18 +123,6 @@ public struct ExpandedIslandView: View {
                                 .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
                                 .padding(5)
                                 .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button(action: {
-                            appState.collapse(force: true)
-                        }) {
-                            Image(systemName: "chevron.up")
-                                .font(IslandFont.iconSmall)
-                                .foregroundColor(.white.opacity(0.65))
-                                .padding(5)
-                                .background(Color.white.opacity(0.08))
                                 .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
