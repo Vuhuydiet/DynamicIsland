@@ -47,36 +47,20 @@ public struct ExpandedIslandView: View {
                     Color.clear
                         .frame(width: notchWidth, height: notchRowHeight)
                     
-                    // Right Ear: Actions (Pin, Settings Window)
-                    HStack(spacing: 6) {
-                        Button(action: {
-                            SoundManager.shared.play(.click)
-                            appState.isPinned.toggle()
-                        }) {
-                            Image(systemName: appState.isPinned ? "pin.fill" : "pin")
-                                .font(IslandFont.iconRegular)
-                                .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
-                                .padding(5)
-                                .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
-                        
-                        Button(action: {
-                            SoundManager.shared.play(.click)
-                            SettingsWindowController.shared.show()
-                        }) {
-                            Image(systemName: "gearshape")
-                                .font(IslandFont.iconRegular)
-                                .foregroundColor(.white.opacity(0.65))
-                                .padding(5)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Open Settings Window")
+                    // Right Ear: Actions (Pin)
+                    Button(action: {
+                        SoundManager.shared.play(.click)
+                        appState.isPinned.toggle()
+                    }) {
+                        Image(systemName: appState.isPinned ? "pin.fill" : "pin")
+                            .font(IslandFont.iconRegular)
+                            .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
+                            .padding(5)
+                            .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
                     .padding(.trailing, 12)
                     .frame(width: earWidth, alignment: .trailing)
                 }
@@ -90,33 +74,19 @@ public struct ExpandedIslandView: View {
                     
                     Spacer()
                     
-                    HStack(spacing: 6) {
-                        Button(action: {
-                            SoundManager.shared.play(.click)
-                            appState.isPinned.toggle()
-                        }) {
-                            Image(systemName: appState.isPinned ? "pin.fill" : "pin")
-                                .font(IslandFont.iconRegular)
-                                .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
-                                .padding(5)
-                                .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button(action: {
-                            SoundManager.shared.play(.click)
-                            SettingsWindowController.shared.show()
-                        }) {
-                            Image(systemName: "gearshape")
-                                .font(IslandFont.iconRegular)
-                                .foregroundColor(.white.opacity(0.65))
-                                .padding(5)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
+                    Button(action: {
+                        SoundManager.shared.play(.click)
+                        appState.isPinned.toggle()
+                    }) {
+                        Image(systemName: appState.isPinned ? "pin.fill" : "pin")
+                            .font(IslandFont.iconRegular)
+                            .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.65))
+                            .padding(5)
+                            .background(appState.isPinned ? Color.orange.opacity(0.2) : Color.white.opacity(0.08))
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
                     .padding(.trailing, 14)
                 }
                 .frame(height: 32)
