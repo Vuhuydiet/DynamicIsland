@@ -131,13 +131,14 @@ public class WindowController: ObservableObject {
             
             if let screen = NSScreen.main {
                 let mousePoint = NSEvent.mouseLocation
-                let islandW: CGFloat = 600.0
-                let islandH: CGFloat = 320.0
+                let islandW: CGFloat = 620.0
+                let islandH: CGFloat = 330.0
+                // Top of rect must be screen.frame.maxY so the notch/bezel zone never triggers collapse
                 let islandRect = NSRect(
                     x: screen.frame.midX - (islandW / 2.0),
                     y: screen.frame.maxY - islandH,
                     width: islandW,
-                    height: islandH
+                    height: islandH  // extends all the way to screen top edge
                 )
                 if !islandRect.contains(mousePoint) {
                     DispatchQueue.main.async {

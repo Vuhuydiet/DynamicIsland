@@ -70,21 +70,68 @@ public struct IslandContainerView: View {
         VStack(spacing: 0) {
             // Main Island Body: ZStack strictly aligned to top
             ZStack(alignment: .top) {
-                // Background & Outer Glow
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.black)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(
-                                appState.isHovering ? Color.white.opacity(0.22) : Color.white.opacity(0.12),
-                                lineWidth: 1
+                // ── Liquid Glass background ──────────────────────────────
+                if appState.isExpanded {
+                    // Frosted material layer (AppKit NSVisualEffectView)
+                    LiquidGlassBackground(cornerRadius: cornerRadius)
+                        .opacity(0.92)
+
+                    // Dark tint to deepen contrast on the glass
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.black.opacity(0.52))
+
+                    // Subtle gradient sheen — light at top, transparent at bottom
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color.white.opacity(0.06),
+                                    Color.clear
+                                ]),
+                                startPoint: .top,
+                                endPoint: .center
                             )
-                    )
+                        )
+
+                    // Specular rim (bright top edge)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(stops: [
+                                    .init(color: Color.white.opacity(appState.isHovering ? 0.38 : 0.22), location: 0.0),
+                                    .init(color: Color.white.opacity(0.08), location: 0.35),
+                                    .init(color: Color.white.opacity(0.04), location: 1.0)
+                                ]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                        .shadow(color: Color.white.opacity(0.08), radius: 2, x: 0, y: -1)
+
+                } else {
+                    // Compact — plain opaque black pill
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.black)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .stroke(
+                                    appState.isHovering
+                                        ? Color.white.opacity(0.22)
+                                        : Color.white.opacity(0.12),
+                                    lineWidth: 1
+                                )
+                        )
+                }
+
+                // Drop shadow
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.clear)
                     .shadow(
-                        color: Color.black.opacity(appState.isExpanded ? 0.6 : 0.25),
-                        radius: appState.isExpanded ? 24 : 8,
+                        color: Color.black.opacity(appState.isExpanded ? 0.7 : 0.3),
+                        radius: appState.isExpanded ? 28 : 8,
                         x: 0,
-                        y: appState.isExpanded ? 12 : 3
+                        y: appState.isExpanded ? 14 : 3
                     )
                 
                 // Content View (Compact vs Expanded)
