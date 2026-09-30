@@ -173,7 +173,7 @@ public struct ExpandedIslandView: View {
                 .padding(.bottom, 6)
             
             // MARK: - Tab Content Router
-            ZStack {
+            ZStack(alignment: .top) {
                 switch appState.activeTab {
                 case .media:
                     MediaView()
@@ -187,7 +187,8 @@ public struct ExpandedIslandView: View {
                     NotesView()
                 }
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            .frame(height: 165, alignment: .top)
+            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             .padding(.bottom, 6)
         }
     }

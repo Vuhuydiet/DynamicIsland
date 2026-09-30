@@ -52,17 +52,10 @@ public struct IslandContainerView: View {
         }
     }
     
-    // Dynamic height calculation (with generous padding so content NEVER overflows)
+    // Dynamic height calculation (strictly anchored to top, perfectly stable across all tabs)
     private var islandHeight: CGFloat {
         if appState.isExpanded {
-            let contentH: CGFloat
-            switch appState.activeTab {
-            case .media: contentH = 165.0
-            case .dropShelf: contentH = 155.0
-            case .timer: contentH = 165.0
-            case .clipboard: contentH = 160.0
-            case .notes: contentH = 155.0
-            }
+            let contentH: CGFloat = 165.0
             return notchTopInset + 38.0 + contentH + 16.0
         } else {
             return isNotchMode ? max(34.0, detector.currentNotch.notchHeight) : 34.0
@@ -98,14 +91,14 @@ public struct IslandContainerView: View {
                 Group {
                     if appState.isExpanded {
                         ExpandedIslandView()
-                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                     } else {
                         CompactIslandView()
-                            .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
                     }
                 }
             }
-            .frame(width: islandWidth, height: islandHeight)
+            .frame(width: islandWidth, height: islandHeight, alignment: .top)
             // CLIP SHAPE: Strictly guarantees that zero pixels ever overflow outside the capsule!
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .animation(.spring(response: 0.28, dampingFraction: 0.82, blendDuration: 0), value: appState.isExpanded)
