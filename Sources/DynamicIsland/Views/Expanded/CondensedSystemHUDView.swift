@@ -3,12 +3,12 @@ import SwiftUI
 public struct CondensedSystemHUDView: View {
     @ObservedObject var monitor = SystemMonitor.shared
     
-    private let badgeWidth: CGFloat = 38.0
+    private let badgeWidth: CGFloat = 34.0
     
     public init() {}
     
     public var body: some View {
-        HStack(spacing: 3.5) {
+        HStack(spacing: 6.0) {
             // 1. CPU Load
             InlineMetricBadge(
                 icon: "cpu",
@@ -35,15 +35,6 @@ public struct CondensedSystemHUDView: View {
                 helpText: String(format: "Disk: %.0f / %.0f GB used", monitor.stats.diskUsedGB, monitor.stats.diskTotalGB),
                 width: badgeWidth
             )
-            
-            // 4. Battery
-            InlineMetricBadge(
-                icon: monitor.stats.isCharging ? "bolt.fill" : (monitor.stats.batteryPercent < 20 ? "battery.25" : "battery.100"),
-                value: "\(monitor.stats.batteryPercent)%",
-                tint: monitor.stats.isCharging ? .green : (monitor.stats.batteryPercent < 20 ? .red : .yellow),
-                helpText: "Battery: \(monitor.stats.batteryPercent)%\(monitor.stats.isCharging ? " (Charging)" : "")",
-                width: badgeWidth
-            )
         }
     }
 }
@@ -55,7 +46,7 @@ public struct InlineMetricBadge: View {
     public let helpText: String
     public let width: CGFloat
     
-    public init(icon: String, value: String, tint: Color, helpText: String, width: CGFloat = 38.0) {
+    public init(icon: String, value: String, tint: Color, helpText: String, width: CGFloat = 34.0) {
         self.icon = icon
         self.value = value
         self.tint = tint
@@ -74,10 +65,11 @@ public struct InlineMetricBadge: View {
                 .foregroundColor(.white.opacity(0.92))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
+                .animation(IslandSpring.bouncy, value: value)
         }
         .frame(width: width, height: 28)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(Rectangle())
         .help(helpText)
     }
 }

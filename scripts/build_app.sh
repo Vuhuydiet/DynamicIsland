@@ -72,15 +72,24 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>Dynamic Island uses Apple Events to display and control now-playing media from Apple Music and Spotify.</string>
+    <key>NSUserNotificationAlertStyle</key>
+    <string>alert</string>
+    <key>NSUserNotificationsUsageDescription</key>
+    <string>Dynamic Island sends notifications when your countdown timer finishes.</string>
 </dict>
 </plist>
 EOF
 
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-# Also symlink or copy to root for quick access
+# Copy to project root
 rm -rf "$DIR/$APP_NAME.app"
 cp -R "$APP_BUNDLE" "$DIR/$APP_NAME.app"
 
-echo "✅ Successfully built $APP_NAME.app!"
-echo "🚀 You can launch it using: open $DIR/$APP_NAME.app"
+# Move/Copy to /Applications/
+echo "🚚 Installing $APP_NAME.app to /Applications/..."
+rm -rf "/Applications/$APP_NAME.app"
+cp -R "$APP_BUNDLE" "/Applications/$APP_NAME.app"
+
+echo "✅ Successfully built and installed $APP_NAME.app to /Applications/!"
+echo "🚀 You can launch it using: open /Applications/$APP_NAME.app"

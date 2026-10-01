@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import SwiftUI
 import Combine
+import CoreAudio
 
 public struct MediaTrack: Equatable, Sendable {
     public var title: String
@@ -12,6 +13,29 @@ public struct MediaTrack: Equatable, Sendable {
     public var isPlaying: Bool
     public var source: MediaSource
     public var artworkData: Data?
+    public var url: String?
+    
+    public init(
+        title: String,
+        artist: String,
+        album: String,
+        duration: Double,
+        position: Double,
+        isPlaying: Bool,
+        source: MediaSource,
+        artworkData: Data? = nil,
+        url: String? = nil
+    ) {
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+        self.position = position
+        self.isPlaying = isPlaying
+        self.source = source
+        self.artworkData = artworkData
+        self.url = url
+    }
     
     public static var empty: MediaTrack {
         MediaTrack(
@@ -22,7 +46,8 @@ public struct MediaTrack: Equatable, Sendable {
             position: 0,
             isPlaying: false,
             source: .none,
-            artworkData: nil
+            artworkData: nil,
+            url: nil
         )
     }
 }
@@ -67,28 +92,157 @@ public enum MediaSource: String, Sendable {
     }
 }
 
+// MARK: - CoreAudio System Audio Monitor
+public final class AudioOutputMonitor: @unchecked Sendable {
+    public static let shared = AudioOutputMonitor()
+    
+    private var defaultOutputDeviceID: AudioDeviceID = 0
+    private var listenerInstalled = false
+    public var onPlaybackStateChanged: (@Sendable () -> Void)?
+    
+    private init() {
+        updateDevice()
+        setupListeners()
+    }
+    
+    public func isAudioPlaying() -> Bool {
+        if defaultOutputDeviceID == 0 || defaultOutputDeviceID == kAudioDeviceUnknown {
+            updateDevice()
+        }
+        guard defaultOutputDeviceID != 0 && defaultOutputDeviceID != kAudioDeviceUnknown else { return false }
+        
+        var isRunning: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(defaultOutputDeviceID, &address, 0, nil, &size, &isRunning)
+        if status != noErr {
+            updateDevice()
+            let retry = AudioObjectGetPropertyData(defaultOutputDeviceID, &address, 0, nil, &size, &isRunning)
+            return retry == noErr && isRunning != 0
+        }
+        return isRunning != 0
+    }
+    
+    private func updateDevice() {
+        var devID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &devID)
+        if status == noErr {
+            defaultOutputDeviceID = devID
+        }
+    }
+    
+    private func setupListeners() {
+        guard !listenerInstalled, defaultOutputDeviceID != 0, defaultOutputDeviceID != kAudioDeviceUnknown else { return }
+        
+        var runAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        let runBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            self?.onPlaybackStateChanged?()
+        }
+        
+        AudioObjectAddPropertyListenerBlock(defaultOutputDeviceID, &runAddress, DispatchQueue.main, runBlock)
+        
+        var devAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        let devBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.updateDevice()
+                self?.onPlaybackStateChanged?()
+            }
+        }
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &devAddress, DispatchQueue.main, devBlock)
+        
+        listenerInstalled = true
+    }
+}
+
+public enum MRPlaybackStatus: Sendable {
+    case playing
+    case paused
+    case stopped
+}
+
 public class MediaManager: ObservableObject, @unchecked Sendable {
     public static let shared = MediaManager()
     
     @Published public var currentTrack: MediaTrack = .empty
+    @Published public var playbackStatus: MRPlaybackStatus = .stopped
     @Published public var visualizerHeights: [CGFloat] = [0.2, 0.4, 0.7, 0.9, 0.6, 0.3, 0.5]
     @Published public var volume: Double = 0.75
     
+    private var lastUserToggleTime: Date = .distantPast
     private var pollTimer: Timer?
     private var visualizerTimer: Timer?
+    private var stateCheckTimer: DispatchSourceTimer?
     
     // MediaRemote function pointers
     private typealias MRGetNowPlayingInfoType = @convention(c) (DispatchQueue, @escaping @Sendable (CFDictionary?) -> Void) -> Void
     private typealias MRRegisterNotificationsType = @convention(c) (DispatchQueue) -> Void
     private typealias MRSendCommandType = @convention(c) (Int32, CFDictionary?) -> Bool
+    private typealias MRGetPIDType = @convention(c) (DispatchQueue, @escaping @Sendable (pid_t) -> Void) -> Void
+    private typealias MRGetIsPlayingType = @convention(c) (DispatchQueue, @escaping @Sendable (Bool) -> Void) -> Void
+    private typealias MRGetPlaybackStateType = @convention(c) (DispatchQueue, @escaping @Sendable (UInt32) -> Void) -> Void
     
     private var mrGetNowPlayingInfo: MRGetNowPlayingInfoType?
+    private var mrGetNowPlayingPID: MRGetPIDType?
     private var mrSendCommand: MRSendCommandType?
+    private var mrGetIsPlaying: MRGetIsPlayingType?
+    private var mrGetPlaybackState: MRGetPlaybackStateType?
+    
+    private var isRefreshing = false
+    private var cachedWebTrack: MediaTrack?
+    private var lastWebQueryTime: Date = .distantPast
     
     private init() {
         setupMediaRemote()
+        setupDistributedNotifications()
+        setupAudioMonitor()
         startPolling()
         startVisualizer()
+    }
+    
+    private func setupAudioMonitor() {
+        AudioOutputMonitor.shared.onPlaybackStateChanged = { [weak self] in
+            self?.quickPlaybackStateCheck()
+            self?.refreshMedia()
+        }
+    }
+    
+    private func setupDistributedNotifications() {
+        let center = DistributedNotificationCenter.default()
+        center.addObserver(
+            forName: NSNotification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshMedia()
+        }
+        
+        center.addObserver(
+            forName: NSNotification.Name("com.spotify.client.PlaybackStateChanged"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshMedia()
+        }
     }
     
     // MARK: - MediaRemote Framework Bridge
@@ -101,38 +255,120 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             mrGetNowPlayingInfo = unsafeBitCast(getInfoSym, to: MRGetNowPlayingInfoType.self)
         }
         
+        if let pidSym = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationPID") {
+            mrGetNowPlayingPID = unsafeBitCast(pidSym, to: MRGetPIDType.self)
+        }
+        
         if let sendSym = dlsym(handle, "MRMediaRemoteSendCommand") {
             mrSendCommand = unsafeBitCast(sendSym, to: MRSendCommandType.self)
+        }
+        
+        if let isPlayingSym = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying") {
+            mrGetIsPlaying = unsafeBitCast(isPlayingSym, to: MRGetIsPlayingType.self)
+        }
+        
+        if let stateSym = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationPlaybackState") {
+            mrGetPlaybackState = unsafeBitCast(stateSym, to: MRGetPlaybackStateType.self)
         }
         
         if let registerSym = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications") {
             let registerFn = unsafeBitCast(registerSym, to: MRRegisterNotificationsType.self)
             registerFn(DispatchQueue.main)
             
-            NotificationCenter.default.addObserver(
-                forName: NSNotification.Name("kMRMediaRemoteNowPlayingInfoDidChangeNotification"),
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.refreshMedia()
+            let notifications = [
+                "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
+                "kMRMediaRemoteNowPlayingApplicationPlaybackStateDidChangeNotification",
+                "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
+                "kMRMediaRemoteNowPlayingApplicationDidChangeNotification"
+            ]
+            
+            for notifName in notifications {
+                NotificationCenter.default.addObserver(
+                    forName: NSNotification.Name(notifName),
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.handleMediaRemoteNotification()
+                }
             }
         }
     }
     
+    private func handleMediaRemoteNotification() {
+        if let getIsPlaying = self.mrGetIsPlaying {
+            getIsPlaying(DispatchQueue.main) { [weak self] isPlaying in
+                guard let self = self else { return }
+                if self.currentTrack.source != .none && self.currentTrack.isPlaying != isPlaying {
+                    self.currentTrack.isPlaying = isPlaying
+                }
+            }
+        }
+        refreshMedia()
+    }
+    
     // MARK: - Polling & Visualizer
     public func startPolling() {
+        startFastStateCheck()
+        
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.refreshMedia()
         }
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.refreshMedia()
+        }
+    }
+    
+    private func startFastStateCheck() {
+        stateCheckTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInitiated))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(120), leeway: .milliseconds(20))
+        timer.setEventHandler { [weak self] in
+            self?.quickPlaybackStateCheck()
+        }
+        timer.resume()
+        stateCheckTimer = timer
+    }
+    
+    private func quickPlaybackStateCheck() {
+        guard Date().timeIntervalSince(lastUserToggleTime) >= 0.4 else { return }
+        
+        let newIsPlaying: Bool
+        if let mrIsPlaying = getMRIsPlaying() {
+            newIsPlaying = mrIsPlaying
+        } else {
+            let (mrPlaying, mrPaused) = getMRPlaybackState()
+            if mrPlaying {
+                newIsPlaying = true
+            } else if mrPaused {
+                newIsPlaying = false
+            } else {
+                newIsPlaying = AudioOutputMonitor.shared.isAudioPlaying()
+            }
+        }
+        
+        let currentIsPlaying = currentTrack.isPlaying
+        
+        if currentIsPlaying != newIsPlaying {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.currentTrack.isPlaying = newIsPlaying
+                self.cachedWebTrack?.isPlaying = newIsPlaying
+                self.playbackStatus = newIsPlaying ? .playing : .paused
+                
+                if newIsPlaying && self.currentTrack.source == .none {
+                    self.refreshMedia()
+                }
+            }
         }
     }
     
     public func startVisualizer() {
         visualizerTimer?.invalidate()
-        visualizerTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if self.currentTrack.isPlaying {
                 self.visualizerHeights = (0..<7).map { _ in
@@ -142,54 +378,157 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 self.visualizerHeights = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        visualizerTimer = timer
     }
     
     // MARK: - Multi-Tier Media Detection
     public func refreshMedia() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        if isRefreshing { return }
+        isRefreshing = true
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
+            defer { self.isRefreshing = false }
+            
+            let (mrPlaying, mrPaused) = self.getMRPlaybackState()
+            let mrIsPlaying = self.getMRIsPlaying()
+            let isAudioActive: Bool
+            if let mr = mrIsPlaying {
+                isAudioActive = mr
+            } else if mrPlaying {
+                isAudioActive = true
+            } else if mrPaused {
+                isAudioActive = false
+            } else {
+                isAudioActive = AudioOutputMonitor.shared.isAudioPlaying()
+            }
             
             // Tier 1: Check Apple Music
-            if self.isAppRunning(bundleId: "com.apple.Music"), let track = self.fetchAppleMusicTrack() {
-                DispatchQueue.main.async { self.currentTrack = track }
-                return
+            var musicTrack: MediaTrack? = nil
+            if self.isAppRunning(bundleId: "com.apple.Music") {
+                musicTrack = self.fetchAppleMusicTrack()
+                if let track = musicTrack, track.isPlaying {
+                    DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                    return
+                }
             }
             
             // Tier 2: Check Spotify
-            if self.isAppRunning(bundleId: "com.spotify.client"), let track = self.fetchSpotifyTrack() {
-                DispatchQueue.main.async { self.currentTrack = track }
-                return
+            var spotifyTrack: MediaTrack? = nil
+            if self.isAppRunning(bundleId: "com.spotify.client") {
+                spotifyTrack = self.fetchSpotifyTrack()
+                if let track = spotifyTrack, track.isPlaying {
+                    DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                    return
+                }
             }
             
             // Tier 3: Check Local Video Players (QuickTime, VLC)
-            if self.isAppRunning(bundleId: "com.apple.QuickTimePlayerX"), let track = self.fetchQuickTimeTrack() {
-                DispatchQueue.main.async { self.currentTrack = track }
-                return
+            var quickTimeTrack: MediaTrack? = nil
+            if self.isAppRunning(bundleId: "com.apple.QuickTimePlayerX") {
+                quickTimeTrack = self.fetchQuickTimeTrack()
+                if let track = quickTimeTrack, track.isPlaying {
+                    DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                    return
+                }
             }
             
-            if self.isAppRunning(bundleId: "org.videolan.vlc"), let track = self.fetchVLCTrack() {
-                DispatchQueue.main.async { self.currentTrack = track }
-                return
+            var vlcTrack: MediaTrack? = nil
+            if self.isAppRunning(bundleId: "org.videolan.vlc") {
+                vlcTrack = self.fetchVLCTrack()
+                if let track = vlcTrack, track.isPlaying {
+                    DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                    return
+                }
             }
             
             // Tier 4: Check Web Browsers for YouTube & Web Video (Chrome, Safari, Brave, Arc, Edge)
-            if let track = self.fetchWebVideoTrack() {
-                DispatchQueue.main.async { self.currentTrack = track }
+            let webTrack = self.fetchWebVideoTrack(isAudioRunning: isAudioActive)
+            if let track = webTrack, track.isPlaying {
+                DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
                 return
             }
             
-            // Tier 5: System-wide NowPlaying via MediaRemote
+            // Tier 5: None is actively playing. Prioritize paused media tracks:
+            if let track = webTrack {
+                DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                return
+            }
+            
+            if let track = spotifyTrack {
+                DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                return
+            }
+            
+            if let track = musicTrack {
+                DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                return
+            }
+            
+            if let track = quickTimeTrack {
+                DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                return
+            }
+            
+            if let track = vlcTrack {
+                DispatchQueue.main.async { self.applyTrackUpdate(track, mrPaused: mrPaused) }
+                return
+            }
+            
+            // Tier 6: System-wide NowPlaying via MediaRemote fallback
             self.fetchMediaRemoteTrack { [weak self] mrTrack in
                 guard let self = self else { return }
                 if let mrTrack = mrTrack {
-                    DispatchQueue.main.async { self.currentTrack = mrTrack }
+                    DispatchQueue.main.async { self.applyTrackUpdate(mrTrack, mrPaused: mrPaused) }
                 } else {
                     DispatchQueue.main.async {
-                        self.currentTrack = .empty
+                        self.applyTrackUpdate(.empty, mrPaused: mrPaused)
                     }
                 }
             }
         }
+    }
+    
+    private func applyTrackUpdate(_ track: MediaTrack, mrPaused: Bool) {
+        self.currentTrack = track
+        self.playbackStatus = track.isPlaying ? .playing : (mrPaused ? .paused : .stopped)
+    }
+
+    private final class PlaybackStateBox: @unchecked Sendable {
+        var state: UInt32 = 0
+    }
+
+    private func getMRPlaybackState() -> (isPlaying: Bool, isPaused: Bool) {
+        guard let getPlaybackState = mrGetPlaybackState else {
+            return (false, false)
+        }
+        let sema = DispatchSemaphore(value: 0)
+        let box = PlaybackStateBox()
+        getPlaybackState(DispatchQueue.global(qos: .userInitiated)) { s in
+            box.state = s
+            sema.signal()
+        }
+        _ = sema.wait(timeout: .now() + 0.1)
+        let s = box.state
+        // 1 = Playing, 2 = Paused, 3 = Stopped
+        return (s == 1, s == 2 || s == 3)
+    }
+
+    private final class IsPlayingBox: @unchecked Sendable {
+        var val: Bool? = nil
+    }
+
+    private func getMRIsPlaying() -> Bool? {
+        guard let getIsPlaying = mrGetIsPlaying else { return nil }
+        let sema = DispatchSemaphore(value: 0)
+        let box = IsPlayingBox()
+        getIsPlaying(DispatchQueue.global(qos: .userInitiated)) { p in
+            box.val = p
+            sema.signal()
+        }
+        _ = sema.wait(timeout: .now() + 0.1)
+        return box.val
     }
     
     private func isAppRunning(bundleId: String) -> Bool {
@@ -335,82 +674,113 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         )
     }
     
-    // MARK: - Web Browsers (YouTube & Video streaming)
-    private func fetchWebVideoTrack() -> MediaTrack? {
+    // MARK: - Web Browsers (YouTube & Web Video)
+    private func fetchWebVideoTrack(isAudioRunning: Bool) -> MediaTrack? {
+        let now = Date()
+        if var cached = cachedWebTrack, now.timeIntervalSince(lastWebQueryTime) < 1.2 {
+            cached.isPlaying = isAudioRunning
+            return cached
+        }
+        
+        let mediaKeywords = ["youtube.com", "youtu.be", "netflix.com", "twitch.tv", "vimeo.com", "soundcloud.com", "bilibili.com", "spotify.com"]
+        
+        var track: MediaTrack? = nil
+        
         // 1. Google Chrome
         if isAppRunning(bundleId: "com.google.Chrome") {
-            let script = """
-            tell application "Google Chrome"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        set tTitle to title of t
-                        set tUrl to URL of t
-                        if tTitle contains "- YouTube" or tUrl contains "youtube.com/watch" or tUrl contains "youtu.be" or tUrl contains "vimeo.com" or tUrl contains "netflix.com/watch" or tUrl contains "twitch.tv" then
-                            return tTitle & "|||" & tUrl
-                        end if
-                    end repeat
-                end repeat
-                return ""
-            end tell
-            """
-            if let output = runAppleScript(script), !output.isEmpty, let track = parseWebVideoOutput(output) {
-                return track
-            }
+            track = queryChromiumBrowser(appName: "Google Chrome", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
         }
         
         // 2. Safari
-        if isAppRunning(bundleId: "com.apple.Safari") {
-            let script = """
-            tell application "Safari"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        set tTitle to name of t
-                        set tUrl to URL of t
-                        if tTitle contains "- YouTube" or tUrl contains "youtube.com/watch" or tUrl contains "youtu.be" or tUrl contains "vimeo.com" or tUrl contains "netflix.com/watch" or tUrl contains "twitch.tv" then
-                            return tTitle & "|||" & tUrl
-                        end if
-                    end repeat
-                end repeat
-                return ""
-            end tell
-            """
-            if let output = runAppleScript(script), !output.isEmpty, let track = parseWebVideoOutput(output) {
-                return track
-            }
+        if track == nil && isAppRunning(bundleId: "com.apple.Safari") {
+            track = querySafariBrowser(keywords: mediaKeywords, isAudioRunning: isAudioRunning)
         }
         
         // 3. Brave Browser
-        if isAppRunning(bundleId: "com.brave.Browser") {
-            let script = """
-            tell application "Brave Browser"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        set tTitle to title of t
-                        set tUrl to URL of t
-                        if tTitle contains "- YouTube" or tUrl contains "youtube.com/watch" or tUrl contains "youtu.be" or tUrl contains "vimeo.com" or tUrl contains "netflix.com/watch" or tUrl contains "twitch.tv" then
-                            return tTitle & "|||" & tUrl
-                        end if
-                    end repeat
-                end repeat
-                return ""
-            end tell
-            """
-            if let output = runAppleScript(script), !output.isEmpty, let track = parseWebVideoOutput(output) {
-                return track
-            }
+        if track == nil && isAppRunning(bundleId: "com.brave.Browser") {
+            track = queryChromiumBrowser(appName: "Brave Browser", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
         }
         
-        return nil
+        // 4. Arc Browser
+        if track == nil && isAppRunning(bundleId: "company.thebrowser.Browser") {
+            track = queryChromiumBrowser(appName: "Arc", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
+        }
+        
+        // 5. Microsoft Edge
+        if track == nil && isAppRunning(bundleId: "com.microsoft.edgemac") {
+            track = queryChromiumBrowser(appName: "Microsoft Edge", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
+        }
+        
+        if let found = track {
+            cachedWebTrack = found
+            lastWebQueryTime = now
+            return found
+        } else {
+            cachedWebTrack = nil
+            return nil
+        }
     }
-    
-    private func parseWebVideoOutput(_ raw: String) -> MediaTrack? {
+
+    private func queryChromiumBrowser(appName: String, keywords: [String], isAudioRunning: Bool) -> MediaTrack? {
+        let conditions = keywords.map { "URL of t contains \"\($0)\"" }.joined(separator: " or ")
+        let script = """
+        tell application "\(appName)"
+            if (count of windows) > 0 then
+                try
+                    set t to active tab of front window
+                    if \(conditions) then
+                        return (title of t) & "|||" & (URL of t)
+                    end if
+                end try
+                repeat with w in windows
+                    set m to (every tab of w whose \(conditions))
+                    if (count of m) > 0 then
+                        set t to item 1 of m
+                        return (title of t) & "|||" & (URL of t)
+                    end if
+                end repeat
+            end if
+            return ""
+        end tell
+        """
+        guard let output = runAppleScript(script), !output.isEmpty else { return nil }
+        return parseWebVideoOutput(output, isAudioRunning: isAudioRunning)
+    }
+
+    private func querySafariBrowser(keywords: [String], isAudioRunning: Bool) -> MediaTrack? {
+        let conditions = keywords.map { "URL of t contains \"\($0)\"" }.joined(separator: " or ")
+        let script = """
+        tell application "Safari"
+            if (count of windows) > 0 then
+                try
+                    set t to current tab of front window
+                    if \(conditions) then
+                        return (name of t) & "|||" & (URL of t)
+                    end if
+                end try
+                repeat with w in windows
+                    set m to (every tab of w whose \(conditions))
+                    if (count of m) > 0 then
+                        set t to item 1 of m
+                        return (name of t) & "|||" & (URL of t)
+                    end if
+                end repeat
+            end if
+            return ""
+        end tell
+        """
+        guard let output = runAppleScript(script), !output.isEmpty else { return nil }
+        return parseWebVideoOutput(output, isAudioRunning: isAudioRunning)
+    }
+
+    private func parseWebVideoOutput(_ raw: String, isAudioRunning: Bool) -> MediaTrack? {
         let parts = raw.components(separatedBy: "|||")
         guard parts.count >= 2 else { return nil }
         
         var title = parts[0]
         let url = parts[1]
         
-        // Clean title prefixes like "(1) ", "▶ ", etc.
+        // Clean title prefixes like "(1) ", "▶ ", "[Playing] ", etc.
         if let regex = try? NSRegularExpression(pattern: #"^(\([0-9]+\)|\▶|\[Playing\])\s*"#, options: []) {
             title = regex.stringByReplacingMatches(in: title, options: [], range: NSRange(location: 0, length: title.utf16.count), withTemplate: "")
         }
@@ -427,30 +797,54 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 album: "Web Video",
                 duration: 0,
                 position: 0,
-                isPlaying: true,
+                isPlaying: isAudioRunning,
                 source: .youtube,
-                artworkData: nil
+                artworkData: nil,
+                url: url
             )
         }
         
-        let isNetflix = url.contains("netflix.com")
-        let isTwitch = url.contains("twitch.tv")
-        let isVimeo = url.contains("vimeo.com")
+        if url.contains("netflix.com") {
+            return MediaTrack(
+                title: title.isEmpty ? "Netflix Video" : title,
+                artist: "Netflix",
+                album: "Streaming",
+                duration: 0,
+                position: 0,
+                isPlaying: isAudioRunning,
+                source: .browser,
+                artworkData: nil,
+                url: url
+            )
+        }
         
-        let brandName: String = isNetflix ? "Netflix" : (isTwitch ? "Twitch" : (isVimeo ? "Vimeo" : "Web Video"))
+        if url.contains("twitch.tv") {
+            return MediaTrack(
+                title: title.isEmpty ? "Twitch Stream" : title,
+                artist: "Twitch",
+                album: "Live Stream",
+                duration: 0,
+                position: 0,
+                isPlaying: isAudioRunning,
+                source: .browser,
+                artworkData: nil,
+                url: url
+            )
+        }
         
         return MediaTrack(
-            title: title.isEmpty ? brandName : title,
-            artist: brandName,
-            album: "Streaming Video",
+            title: title.isEmpty ? "Web Video" : title,
+            artist: "Web Browser",
+            album: "Online Media",
             duration: 0,
             position: 0,
-            isPlaying: true,
+            isPlaying: isAudioRunning,
             source: .browser,
-            artworkData: nil
+            artworkData: nil,
+            url: url
         )
     }
-    
+
     // MARK: - System-Wide MediaRemote
     private func fetchMediaRemoteTrack(completion: @escaping @Sendable (MediaTrack?) -> Void) {
         guard let getInfo = mrGetNowPlayingInfo else {
@@ -458,8 +852,8 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             return
         }
         
-        getInfo(DispatchQueue.global(qos: .utility)) { dict in
-            guard let dict = dict as? [String: Any] else {
+        getInfo(DispatchQueue.global(qos: .utility)) { [weak self] dict in
+            guard let self = self, let dict = dict as? [String: Any] else {
                 completion(nil)
                 return
             }
@@ -470,39 +864,108 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 return
             }
             
-            let artist = (dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String) ?? "Now Playing"
+            let artist = (dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String) ?? ""
             let album = (dict["kMRMediaRemoteNowPlayingInfoAlbum"] as? String) ?? ""
             let duration = (dict["kMRMediaRemoteNowPlayingInfoDuration"] as? NSNumber)?.doubleValue ?? 0
             let position = (dict["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? NSNumber)?.doubleValue ?? 0
-            let rate = (dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? NSNumber)?.doubleValue ?? 1.0
+            let rate = (dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? NSNumber)?.doubleValue ?? 0.0
             let artwork = dict["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data
             
-            let isPlaying = rate > 0.01
+            let isPlaying = rate > 0.01 || AudioOutputMonitor.shared.isAudioPlaying()
             
-            var source: MediaSource = .mediaRemote
-            if artist.lowercased().contains("youtube") || title.lowercased().contains("youtube") {
-                source = .youtube
-            } else if artist.lowercased().contains("spotify") {
-                source = .spotify
-            } else if artist.lowercased().contains("quicktime") {
-                source = .quicktime
+            if let getPID = self.mrGetNowPlayingPID {
+                getPID(DispatchQueue.global(qos: .utility)) { [weak self] pid in
+                    let bundleId = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
+                    let track = self?.buildMediaRemoteTrack(
+                        title: title,
+                        artist: artist,
+                        album: album,
+                        duration: duration,
+                        position: position,
+                        isPlaying: isPlaying,
+                        artwork: artwork,
+                        bundleId: bundleId
+                    )
+                    completion(track)
+                }
+            } else {
+                let track = self.buildMediaRemoteTrack(
+                    title: title,
+                    artist: artist,
+                    album: album,
+                    duration: duration,
+                    position: position,
+                    isPlaying: isPlaying,
+                    artwork: artwork,
+                    bundleId: ""
+                )
+                completion(track)
             }
-            
-            let track = MediaTrack(
-                title: title,
-                artist: artist,
-                album: album,
-                duration: duration,
-                position: position,
-                isPlaying: isPlaying,
-                source: source,
-                artworkData: artwork
-            )
-            completion(track)
         }
     }
     
+    private func buildMediaRemoteTrack(
+        title: String,
+        artist: String,
+        album: String,
+        duration: Double,
+        position: Double,
+        isPlaying: Bool,
+        artwork: Data?,
+        bundleId: String
+    ) -> MediaTrack {
+        var finalArtist = artist
+        var source: MediaSource = .mediaRemote
+        
+        if bundleId == "com.apple.Music" {
+            source = .music
+        } else if bundleId == "com.spotify.client" {
+            source = .spotify
+        } else if bundleId == "com.apple.QuickTimePlayerX" {
+            source = .quicktime
+        } else if bundleId == "org.videolan.vlc" {
+            source = .vlc
+        } else {
+            let isBrowser = bundleId.contains("Chrome") || bundleId.contains("Safari") || bundleId.contains("Brave") || bundleId.contains("Arc") || bundleId.contains("Edge")
+            let isYouTube = artist.lowercased().contains("youtube") || title.lowercased().contains("youtube")
+            
+            if isYouTube {
+                source = .youtube
+                if finalArtist.isEmpty {
+                    finalArtist = "YouTube"
+                }
+            } else if isBrowser {
+                source = .browser
+            }
+        }
+        
+        if finalArtist.isEmpty {
+            finalArtist = "Now Playing"
+        }
+        
+        return MediaTrack(
+            title: title,
+            artist: finalArtist,
+            album: album,
+            duration: duration,
+            position: position,
+            isPlaying: isPlaying,
+            source: source,
+            artworkData: artwork
+        )
+    }
+    
     // MARK: - Playback Controls
+    // MediaRemote Command Constants (from Apple's private MediaRemote framework)
+    public enum MRCommand: Int32 {
+        case play = 0
+        case pause = 1
+        case togglePlayPause = 2
+        case stop = 3
+        case nextTrack = 4
+        case previousTrack = 5
+    }
+
     @discardableResult
     public func sendMediaRemoteCommand(_ command: Int32) -> Bool {
         if let mrSendCommand = mrSendCommand {
@@ -548,15 +1011,20 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             break
         }
         
-        // 2 = Toggle Play/Pause in MediaRemote
+        let willPlay = !currentTrack.isPlaying
         if !handled {
-            if !sendMediaRemoteCommand(2) {
+            let cmd: Int32 = willPlay ? MRCommand.play.rawValue : MRCommand.pause.rawValue
+            if !sendMediaRemoteCommand(cmd) {
+                _ = sendMediaRemoteCommand(MRCommand.togglePlayPause.rawValue)
                 sendSystemMediaKey(key: 16)
             }
         }
         
-        currentTrack.isPlaying.toggle()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        lastUserToggleTime = Date()
+        currentTrack.isPlaying = willPlay
+        cachedWebTrack?.isPlaying = willPlay
+        playbackStatus = willPlay ? .playing : .paused
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.refreshMedia()
         }
     }
@@ -581,14 +1049,14 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             break
         }
         
-        // 3 = Next Track in MediaRemote
+        // 4 = Next Track in MediaRemote (command 3 is kMRStop!)
         if !handled {
-            if !sendMediaRemoteCommand(3) {
+            if !sendMediaRemoteCommand(MRCommand.nextTrack.rawValue) {
                 sendSystemMediaKey(key: 17)
             }
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.refreshMedia()
         }
     }
@@ -613,14 +1081,14 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             break
         }
         
-        // 4 = Previous Track in MediaRemote
+        // 5 = Previous Track in MediaRemote (command 4 is kMRNextTrack!)
         if !handled {
-            if !sendMediaRemoteCommand(4) {
+            if !sendMediaRemoteCommand(MRCommand.previousTrack.rawValue) {
                 sendSystemMediaKey(key: 18)
             }
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.refreshMedia()
         }
     }
@@ -636,6 +1104,79 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         default:
             currentTrack.position = seconds
         }
+    }
+    
+    public func openMediaPage() {
+        SoundManager.shared.play(.click)
+        
+        // 1. If we have a web URL, focus that tab in the running browser or open the URL
+        if let urlStr = currentTrack.url, !urlStr.isEmpty {
+            if isAppRunning(bundleId: "com.google.Chrome") && focusBrowserTab(appName: "Google Chrome", urlPattern: urlStr) {
+                return
+            }
+            if isAppRunning(bundleId: "com.apple.Safari") && focusBrowserTab(appName: "Safari", urlPattern: urlStr) {
+                return
+            }
+            if isAppRunning(bundleId: "com.brave.Browser") && focusBrowserTab(appName: "Brave Browser", urlPattern: urlStr) {
+                return
+            }
+            if isAppRunning(bundleId: "company.thebrowser.Browser") && focusBrowserTab(appName: "Arc", urlPattern: urlStr) {
+                return
+            }
+            if isAppRunning(bundleId: "com.microsoft.edgemac") && focusBrowserTab(appName: "Microsoft Edge", urlPattern: urlStr) {
+                return
+            }
+            if let url = URL(string: urlStr) {
+                NSWorkspace.shared.open(url)
+                return
+            }
+        }
+        
+        // 2. Fall back to opening the native app
+        openMediaApp()
+    }
+    
+    private func focusBrowserTab(appName: String, urlPattern: String) -> Bool {
+        let safePattern = urlPattern.replacingOccurrences(of: "\"", with: "\\\"")
+        let script: String
+        if appName == "Safari" {
+            script = """
+            tell application "Safari"
+                activate
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if URL of t contains "\(safePattern)" then
+                            set current tab of w to t
+                            set index of w to 1
+                            return "ok"
+                        end if
+                    end repeat
+                end repeat
+                return "not_found"
+            end tell
+            """
+        } else {
+            script = """
+            tell application "\(appName)"
+                activate
+                repeat with w in windows
+                    set tabIdx to 0
+                    repeat with t in tabs of w
+                        set tabIdx to tabIdx + 1
+                        if URL of t contains "\(safePattern)" then
+                            set active tab index of w to tabIdx
+                            set index of w to 1
+                            return "ok"
+                        end if
+                    end repeat
+                end repeat
+                return "not_found"
+            end tell
+            """
+        }
+        
+        let res = runAppleScript(script)
+        return res?.contains("ok") == true
     }
     
     public func openMediaApp() {

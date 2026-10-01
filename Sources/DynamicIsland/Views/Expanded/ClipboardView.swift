@@ -33,13 +33,15 @@ public struct ClipboardView: View {
                 
                 if !clipboard.history.isEmpty {
                     Button(action: {
-                        clipboard.clearHistory()
+                        withAnimation(IslandSpring.bouncy) {
+                            clipboard.clearHistory()
+                        }
                     }) {
                         Text("Clear")
                             .font(IslandFont.caption)
                             .foregroundColor(.white.opacity(0.6))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
                 }
             }
             .padding(.horizontal, 14)
@@ -62,11 +64,13 @@ public struct ClipboardView: View {
                     LazyVStack(spacing: 6) {
                         ForEach(clipboard.filteredHistory) { item in
                             ClipboardRow(item: item)
+                                .transition(.scale(scale: 0.95).combined(with: .opacity))
                         }
                     }
                     .padding(.horizontal, 14)
                 }
                 .frame(height: 96)
+                .animation(IslandSpring.bouncy, value: clipboard.filteredHistory.count)
             }
         }
         .padding(.bottom, 6)
@@ -76,10 +80,13 @@ public struct ClipboardView: View {
 public struct ClipboardRow: View {
     public let item: ClipboardItem
     @ObservedObject var clipboard = ClipboardManager.shared
+    @State private var isHovering = false
     
     public var body: some View {
         Button(action: {
-            clipboard.copyToClipboard(item)
+            withAnimation(IslandSpring.bouncy) {
+                clipboard.copyToClipboard(item)
+            }
         }) {
             HStack(spacing: 8) {
                 Image(systemName: item.isURL ? "link" : "doc.text")
@@ -106,17 +113,24 @@ public struct ClipboardRow: View {
                     .padding(.vertical, 2)
                     .background(Color.green.opacity(0.2))
                     .clipShape(Capsule())
+                    .transition(.scale(scale: 0.7).combined(with: .opacity))
                 } else {
                     Text("Copy")
                         .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.white.opacity(isHovering ? 0.8 : 0.4))
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.06))
+            .background(isHovering ? Color.white.opacity(0.10) : Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .animation(IslandSpring.bouncy, value: clipboard.recentlyCopiedId)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.98))
+        .onHover { hovering in
+            withAnimation(IslandSpring.bouncy) {
+                isHovering = hovering
+            }
+        }
     }
 }

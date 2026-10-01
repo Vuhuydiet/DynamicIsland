@@ -19,10 +19,10 @@ public enum ExpandTrigger: String, CaseIterable, Identifiable {
 }
 
 public enum IslandTheme: String, CaseIterable, Identifiable {
-    case oledBlack = "Pure Jet Black"
-    case frostedGlass = "Frosted Dark Glass"
-    case midnight = "Midnight Glow"
-    
+    case liquidGlass = "Liquid Glass"
+    case dark        = "Dark"
+    case light       = "Light"
+
     public var id: String { rawValue }
 }
 
@@ -49,6 +49,18 @@ public class SettingsManager: ObservableObject {
     
     @Published public var islandTheme: IslandTheme {
         didSet { defaults.set(islandTheme.rawValue, forKey: "islandTheme") }
+    }
+
+    /// Raw values of tabs the user wants hidden from the tab bar.
+    @Published public var hiddenTabs: Set<String> {
+        didSet {
+            defaults.set(Array(hiddenTabs), forKey: "hiddenTabs")
+        }
+    }
+
+    /// Returns true when the given tab should appear in the tab bar.
+    public func isTabVisible(_ tab: IslandTab) -> Bool {
+        !hiddenTabs.contains(tab.rawValue)
     }
     
     // MARK: - Sound Settings
@@ -114,13 +126,17 @@ public class SettingsManager: ObservableObject {
     private init() {
         let savedStyle = defaults.string(forKey: "notchStyle").flatMap(NotchStyle.init) ?? .auto
         let savedTrigger = defaults.string(forKey: "expandTrigger").flatMap(ExpandTrigger.init) ?? .hoverAndClick
-        let savedTheme = defaults.string(forKey: "islandTheme").flatMap(IslandTheme.init) ?? .oledBlack
+        let savedTheme = defaults.string(forKey: "islandTheme").flatMap(IslandTheme.init) ?? .liquidGlass
         let savedScheme = defaults.string(forKey: "soundScheme").flatMap(SoundScheme.init) ?? .classic
-        
+
         self.notchStyle = savedStyle
         self.expandTrigger = savedTrigger
         self.islandTheme = savedTheme
         self.soundScheme = savedScheme
+
+        // Restore hidden tabs (stored as array of raw-value strings)
+        let savedHidden = defaults.stringArray(forKey: "hiddenTabs") ?? []
+        self.hiddenTabs = Set(savedHidden)
         
         self.soundEffectsEnabled = defaults.object(forKey: "soundEffectsEnabled") as? Bool ?? true
         self.soundVolume = defaults.object(forKey: "soundVolume") as? Double ?? 0.75
@@ -131,7 +147,7 @@ public class SettingsManager: ObservableObject {
         self.soundOnTimer = defaults.object(forKey: "soundOnTimer") as? Bool ?? true
         
         self.showMenuBarIcon = defaults.object(forKey: "showMenuBarIcon") as? Bool ?? true
-        self.hoverDelay = defaults.object(forKey: "hoverDelay") as? Double ?? 0.18
+        self.hoverDelay = defaults.object(forKey: "hoverDelay") as? Double ?? 0.05
         self.customWidthOffset = defaults.object(forKey: "customWidthOffset") as? Double ?? 0.0
         self.customYOffset = defaults.object(forKey: "customYOffset") as? Double ?? 0.0
         self.liveActivityCompact = defaults.object(forKey: "liveActivityCompact") as? Bool ?? true

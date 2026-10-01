@@ -10,43 +10,73 @@ public struct MediaView: View {
             // MARK: - Track Info & Artwork
             HStack(spacing: 14) {
                 // Album Art / Video Thumbnail / Disc
-                ZStack {
-                    if let artData = mediaManager.currentTrack.artworkData,
-                       let nsImg = NSImage(data: artData) {
-                        Image(nsImage: nsImg)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 54, height: 54)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .shadow(color: mediaManager.currentTrack.source.accentColor.opacity(0.3), radius: 8, y: 4)
-                    } else {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        mediaManager.currentTrack.source.accentColor.opacity(0.85),
-                                        mediaManager.currentTrack.source.accentColor.opacity(0.5)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                Button(action: {
+                    mediaManager.openMediaPage()
+                }) {
+                    ZStack {
+                        if let artData = mediaManager.currentTrack.artworkData,
+                           let nsImg = NSImage(data: artData) {
+                            Image(nsImage: nsImg)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 54, height: 54)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .scaleEffect(mediaManager.currentTrack.isPlaying ? 1.0 : 0.90)
+                                .shadow(
+                                    color: mediaManager.currentTrack.source.accentColor.opacity(mediaManager.currentTrack.isPlaying ? 0.45 : 0.15),
+                                    radius: mediaManager.currentTrack.isPlaying ? 10 : 4,
+                                    y: 4
                                 )
-                            )
-                            .frame(width: 54, height: 54)
-                            .shadow(color: mediaManager.currentTrack.source.accentColor.opacity(0.35), radius: 8, y: 4)
-                        
-                        Image(systemName: mediaManager.currentTrack.source.iconName)
-                            .font(IslandFont.iconHero)
-                            .foregroundColor(.white)
+                                .animation(IslandSpring.expand, value: mediaManager.currentTrack.isPlaying)
+                        } else {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            mediaManager.currentTrack.source.accentColor.opacity(0.85),
+                                            mediaManager.currentTrack.source.accentColor.opacity(0.5)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 54, height: 54)
+                                .scaleEffect(mediaManager.currentTrack.isPlaying ? 1.0 : 0.90)
+                                .shadow(
+                                    color: mediaManager.currentTrack.source.accentColor.opacity(mediaManager.currentTrack.isPlaying ? 0.40 : 0.15),
+                                    radius: mediaManager.currentTrack.isPlaying ? 10 : 4,
+                                    y: 4
+                                )
+                                .animation(IslandSpring.expand, value: mediaManager.currentTrack.isPlaying)
+                            
+                            Image(systemName: mediaManager.currentTrack.source.iconName)
+                                .font(IslandFont.iconHero)
+                                .foregroundColor(.white)
+                                .scaleEffect(mediaManager.currentTrack.isPlaying ? 1.0 : 0.90)
+                                .animation(IslandSpring.expand, value: mediaManager.currentTrack.isPlaying)
+                        }
                     }
                 }
+                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.94))
                 
                 // Track metadata
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        Text(mediaManager.currentTrack.title)
-                            .font(IslandFont.title)
-                            .foregroundColor(.white)
-                            .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Button(action: {
+                            mediaManager.openMediaPage()
+                        }) {
+                            HStack(spacing: 5) {
+                                Text(mediaManager.currentTrack.title)
+                                    .font(IslandFont.title)
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
+                        .buttonStyle(.plain)
                         
                         Spacer()
                         
@@ -122,18 +152,8 @@ public struct MediaView: View {
                 .padding(.horizontal, 14)
             }
             
-            // MARK: - Controls Row
-            HStack(spacing: 24) {
-                // Open App button
-                Button(action: {
-                    mediaManager.openMediaApp()
-                }) {
-                    Image(systemName: "arrow.up.right.square")
-                        .font(IslandFont.iconRegular)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .buttonStyle(.plain)
-                
+            // MARK: - Controls Row (Centered Playback Controls)
+            HStack(spacing: 32) {
                 Spacer()
                 
                 // Previous
@@ -144,9 +164,9 @@ public struct MediaView: View {
                         .font(IslandFont.iconLarge)
                         .foregroundColor(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.86))
                 
-                // Play / Pause
+                // Play / Pause / Stop
                 Button(action: {
                     mediaManager.togglePlayPause()
                 }) {
@@ -155,13 +175,16 @@ public struct MediaView: View {
                             .fill(Color.white)
                             .frame(width: 40, height: 40)
                         
-                        Image(systemName: mediaManager.currentTrack.isPlaying ? "pause.fill" : "play.fill")
+                        Image(systemName: playButtonIconName)
                             .font(IslandFont.iconLarge)
                             .foregroundColor(.black)
                             .offset(x: mediaManager.currentTrack.isPlaying ? 0 : 1.5)
+                            .scaleEffect(mediaManager.currentTrack.isPlaying ? 1.0 : 1.06)
+                            .animation(IslandSpring.bouncy, value: mediaManager.currentTrack.isPlaying)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.88))
+                .help(mediaManager.currentTrack.isPlaying ? "Pause" : "Play")
                 
                 // Next
                 Button(action: {
@@ -171,13 +194,17 @@ public struct MediaView: View {
                         .font(IslandFont.iconLarge)
                         .foregroundColor(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.86))
                 
                 Spacer()
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
         }
+    }
+    
+    private var playButtonIconName: String {
+        mediaManager.currentTrack.isPlaying ? "pause.fill" : "play.fill"
     }
     
     private func formatTime(_ seconds: Double) -> String {

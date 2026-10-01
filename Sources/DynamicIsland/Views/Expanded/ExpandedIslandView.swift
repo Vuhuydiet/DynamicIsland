@@ -30,13 +30,9 @@ struct LiquidGlassBackground: NSViewRepresentable {
                                        .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
             v.layer?.masksToBounds  = true
         } else {
-            // Flat top, rounded bottom
-            // NSVisualEffectView doesn't support per-corner radii directly,
-            // so we set bottom radius and mask only bottom corners.
-            v.layer?.cornerRadius   = cornerRadius
-            // On macOS, MinY = bottom edge (Cocoa coords), MaxY = top edge
-            v.layer?.maskedCorners  = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-            v.layer?.masksToBounds  = true
+            // In notch mode, containerShape handles the continuous curved contours with top flares
+            v.layer?.cornerRadius   = 0
+            v.layer?.masksToBounds  = false
         }
     }
 }
@@ -46,6 +42,7 @@ public struct ExpandedIslandView: View {
     @ObservedObject var appState  = AppState.shared
     @ObservedObject var detector  = NotchDetector.shared
     @ObservedObject var settings  = SettingsManager.shared
+    @Namespace private var tabNamespace
 
     private var isNotchMode: Bool {
         switch settings.notchStyle {
@@ -63,7 +60,7 @@ public struct ExpandedIslandView: View {
         max(170.0, detector.currentNotch.notchWidth)
     }
 
-    private var expandedWidth: CGFloat { 600.0 }
+    private var expandedWidth: CGFloat { AppState.expandedWidth }
 
     private var earWidth: CGFloat {
         max(0, (expandedWidth - notchWidth) / 2.0)
@@ -92,19 +89,20 @@ public struct ExpandedIslandView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Open Preferences (⌘,)")
-                    .padding(.leading, 12)
+                    .padding(.leading, 38)
                     .frame(width: earWidth, alignment: .leading)
 
                     // Physical notch cutout
                     Color.clear
                         .frame(width: notchWidth, height: notchRowHeight)
+                        .contentShape(Rectangle())
 
                     // Right Ear: Stats + Pin
                     HStack(spacing: 5) {
                         CondensedSystemHUDView()
                         pinButton
                     }
-                    .padding(.trailing, 10)
+                    .padding(.trailing, 36)
                     .frame(width: earWidth, alignment: .trailing)
                 }
                 .frame(width: expandedWidth, height: notchRowHeight)
@@ -127,7 +125,7 @@ public struct ExpandedIslandView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Open Preferences (⌘,)")
-                    .padding(.leading, 14)
+                    .padding(.leading, 24)
 
                     Spacer()
 
@@ -135,7 +133,7 @@ public struct ExpandedIslandView: View {
                         CondensedSystemHUDView()
                         pinButton
                     }
-                    .padding(.trailing, 12)
+                    .padding(.trailing, 22)
                 }
                 .frame(height: 32)
                 .padding(.top, 4)
@@ -143,36 +141,59 @@ public struct ExpandedIslandView: View {
 
             // ── Divider ──────────────────────────────────────────────────
             glassRuler
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 36)
                 .padding(.top, 4)
                 .padding(.bottom, 5)
 
-            // ── Tab Bar — full width, equally spaced ─────────────────────
+            // ── Tab Bar — full width, equally spaced with generous edge margins ───
+            let visibleTabs = IslandTab.allCases.filter { settings.isTabVisible($0) }
             HStack(spacing: 4) {
-                ForEach(IslandTab.allCases) { tab in
+                ForEach(visibleTabs) { tab in
                     tabPill(tab)
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 40)
             .padding(.bottom, 5)
+            .onAppear {
+                if !settings.isTabVisible(appState.activeTab),
+                   let first = visibleTabs.first {
+                    appState.activeTab = first
+                }
+            }
+            .onChange(of: settings.hiddenTabs) { _, _ in
+                if !settings.isTabVisible(appState.activeTab),
+                   let first = visibleTabs.first {
+                    withAnimation(IslandSpring.tabSlide) { appState.activeTab = first }
+                }
+            }
 
             // ── Thin divider before content ───────────────────────────────
             glassRuler
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 36)
                 .padding(.bottom, 5)
 
             // ── Tab Content ───────────────────────────────────────────────
             ZStack(alignment: .top) {
-                switch appState.activeTab {
-                case .media:     MediaView()
-                case .dropShelf: DropShelfView()
-                case .timer:     TimerView()
-                case .clipboard: ClipboardView()
-                case .notes:     NotesView()
+                Group {
+                    switch appState.activeTab {
+                    case .media:     MediaView()
+                    case .dropShelf: DropShelfView()
+                    case .timer:     TimerView()
+                    case .clipboard: ClipboardView()
+                    case .notes:     NotesView()
+                    }
                 }
+                .id(appState.activeTab)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .offset(y: 6)).combined(with: .scale(scale: 0.98, anchor: .top)),
+                        removal: .opacity.combined(with: .offset(y: -4))
+                    )
+                )
             }
             .frame(height: 165, alignment: .top)
-            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+            .animation(IslandSpring.tabSlide, value: appState.activeTab)
+            .padding(.horizontal, 32)
             .padding(.bottom, 6)
         }
     }
@@ -182,11 +203,14 @@ public struct ExpandedIslandView: View {
     private var pinButton: some View {
         Button {
             SoundManager.shared.play(.click)
-            appState.isPinned.toggle()
+            withAnimation(IslandSpring.bouncy) {
+                appState.isPinned.toggle()
+            }
         } label: {
             Image(systemName: appState.isPinned ? "pin.fill" : "pin")
                 .font(IslandFont.iconRegular)
                 .foregroundColor(appState.isPinned ? .orange : .white.opacity(0.7))
+                .rotationEffect(appState.isPinned ? .degrees(0) : .degrees(-15))
                 .padding(5)
                 .background(
                     appState.isPinned
@@ -201,7 +225,7 @@ public struct ExpandedIslandView: View {
                     lineWidth: 0.5)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.88))
         .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
     }
 
@@ -218,50 +242,54 @@ public struct ExpandedIslandView: View {
         }
     }
 
-    /// Full-width Liquid Glass tab pill
+    /// Full-width Liquid Glass tab pill with fluid matched-geometry gliding indicator
     @ViewBuilder
     private func tabPill(_ tab: IslandTab) -> some View {
         let isActive = appState.activeTab == tab
         Button {
             SoundManager.shared.play(.click)
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.78)) {
+            withAnimation(IslandSpring.tabSlide) {
                 appState.activeTab = tab
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: tab.icon)
                     .font(IslandFont.iconSmall)
+                    .scaleEffect(isActive ? 1.08 : 1.0)
                 if isActive {
                     Text(tab.rawValue)
                         .font(IslandFont.caption)
                         .lineLimit(1)
-                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                        .transition(.opacity.combined(with: .scale(scale: 0.88)))
                 }
             }
             .foregroundColor(isActive ? .white : .white.opacity(0.50))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
-            // Liquid-Glass look
+            // Liquid-Glass matched background slider
             .background {
-                if isActive {
-                    Capsule()
-                        .fill(Color.white.opacity(0.18))
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
-                        )
-                        .shadow(color: .white.opacity(0.06), radius: 4, x: 0, y: -1)
-                } else {
-                    Capsule()
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-                        )
+                ZStack {
+                    if isActive {
+                        Capsule()
+                            .fill(Color.white.opacity(0.18))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.26), lineWidth: 0.5)
+                            )
+                            .shadow(color: .white.opacity(0.08), radius: 4, x: 0, y: -1)
+                            .matchedGeometryEffect(id: "activeTabIndicator", in: tabNamespace)
+                    } else {
+                        Capsule()
+                            .fill(Color.white.opacity(0.04))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.07), lineWidth: 0.5)
+                            )
+                    }
                 }
             }
         }
-        .buttonStyle(.plain)
-        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isActive)
+        .buttonStyle(PillButtonStyle())
+        .animation(IslandSpring.tabSlide, value: isActive)
     }
 }

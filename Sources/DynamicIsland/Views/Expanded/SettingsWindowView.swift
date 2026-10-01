@@ -103,12 +103,67 @@ public struct SettingsWindowView: View {
 // MARK: - General Settings Tab
 public struct GeneralSettingsTab: View {
     @ObservedObject var settings = SettingsManager.shared
-    
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("General Preferences")
                 .font(.system(size: 16, weight: .bold))
-            
+
+            // ── Appearance Theme ──────────────────────────────────────────
+            GroupBox(label: Label("Appearance Theme", systemImage: "paintpalette.fill").font(.system(size: 12, weight: .semibold))) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        ForEach(IslandTheme.allCases) { theme in
+                            ThemeCard(theme: theme, isSelected: settings.islandTheme == theme) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    settings.islandTheme = theme
+                                }
+                            }
+                        }
+                    }
+                    Text("Liquid Glass uses the system blur material. Dark is solid near-black. Light uses a bright frosted surface.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+
+            // ── Tab Visibility ────────────────────────────────────────────
+            GroupBox(label: Label("Visible Tabs", systemImage: "rectangle.3.group.fill").font(.system(size: 12, weight: .semibold))) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(IslandTab.allCases.enumerated()), id: \.element.id) { idx, tab in
+                        if idx > 0 { Divider() }
+                        HStack {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 13))
+                                .frame(width: 20)
+                                .foregroundColor(.accentColor)
+                            Text(tab.rawValue)
+                                .font(.system(size: 12))
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { settings.isTabVisible(tab) },
+                                set: { visible in
+                                    if visible {
+                                        settings.hiddenTabs.remove(tab.rawValue)
+                                    } else {
+                                        // Keep at least one tab visible
+                                        let remaining = IslandTab.allCases.filter { settings.isTabVisible($0) }
+                                        if remaining.count > 1 {
+                                            settings.hiddenTabs.insert(tab.rawValue)
+                                        }
+                                    }
+                                }
+                            ))
+                            .labelsHidden()
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+            }
+
             // Island Mode Group
             GroupBox(label: Label("Island Behavior & Mode", systemImage: "macbook").font(.system(size: 12, weight: .semibold))) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -118,35 +173,41 @@ public struct GeneralSettingsTab: View {
                         }
                     }
                     .pickerStyle(.radioGroup)
-                    
+
                     Text("Auto Detect anchors to the physical MacBook notch on the built-in screen and displays as a floating pill on external displays.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
-                    
+
                     Divider()
-                    
+
                     Picker("Trigger Expansion:", selection: $settings.expandTrigger) {
                         ForEach(ExpandTrigger.allCases) { trig in
                             Text(trig.rawValue).tag(trig)
                         }
                     }
                     .pickerStyle(.segmented)
-                    
+
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("Hover Delay:")
                                 .font(.system(size: 12))
                             Spacer()
-                            Text(String(format: "%.0f ms", settings.hoverDelay * 1000))
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .foregroundColor(.secondary)
+                            if settings.hoverDelay <= 0.005 {
+                                Text("Instant (0 ms)")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text(String(format: "%.0f ms", settings.hoverDelay * 1000))
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                        Slider(value: $settings.hoverDelay, in: 0.05...0.60, step: 0.01)
+                        Slider(value: $settings.hoverDelay, in: 0.0...0.60, step: 0.01)
                     }
                 }
                 .padding(8)
             }
-            
+
             // Startup & Login Group
             GroupBox(label: Label("Startup & Login", systemImage: "power").font(.system(size: 12, weight: .semibold))) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -155,14 +216,14 @@ public struct GeneralSettingsTab: View {
                         set: { settings.setLaunchAtLogin($0) }
                     ))
                     .font(.system(size: 12))
-                    
+
                     Text("Automatically opens Dynamic Island when your Mac boots or you log in.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
                 .padding(8)
             }
-            
+
             // Menu Bar Group
             GroupBox(label: Label("Menu Bar Item", systemImage: "menubar.rectangle").font(.system(size: 12, weight: .semibold))) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -175,6 +236,79 @@ public struct GeneralSettingsTab: View {
                 .padding(8)
             }
         }
+    }
+}
+
+// MARK: - Theme Card (visual tile for theme selection)
+public struct ThemeCard: View {
+    public let theme: IslandTheme
+    public let isSelected: Bool
+    public let onSelect: () -> Void
+
+    private var previewGradient: LinearGradient {
+        switch theme {
+        case .liquidGlass:
+            return LinearGradient(
+                colors: [Color(white: 0.18), Color(white: 0.12)],
+                startPoint: .top, endPoint: .bottom
+            )
+        case .dark:
+            return LinearGradient(
+                colors: [Color(white: 0.07), Color.black],
+                startPoint: .top, endPoint: .bottom
+            )
+        case .light:
+            return LinearGradient(
+                colors: [Color(white: 0.96), Color(white: 0.88)],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+    }
+
+    private var previewAccent: Color {
+        switch theme {
+        case .liquidGlass: return Color.white.opacity(0.35)
+        case .dark:        return Color.white.opacity(0.15)
+        case .light:       return Color.black.opacity(0.20)
+        }
+    }
+
+    public var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 6) {
+                // Mini island preview
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(previewGradient)
+                        .frame(width: 80, height: 40)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(previewAccent, lineWidth: 1)
+                        )
+                    // Mini "notch bar" indicator
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(previewAccent)
+                        .frame(width: 36, height: 6)
+                        .offset(y: -11)
+                }
+
+                Text(theme.rawValue)
+                    .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? .accentColor : .primary)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.12) : Color(NSColor.controlColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 1.5 : 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 

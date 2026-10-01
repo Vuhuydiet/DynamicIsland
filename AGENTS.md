@@ -30,8 +30,16 @@ When compiling sources directly via `swiftc`, include the following framework fl
 DEVELOPER_DIR=/Library/Developer/CommandLineTools ./scripts/build_app.sh && \
 pkill -f DynamicIsland || true && \
 sleep 0.4 && \
-open /Users/vuhuydiet/dev/dynamic-island/DynamicIsland.app
+open /Applications/DynamicIsland.app
 ```
+
+### 4. Automatic Installation to `/Applications/`
+Every compilation via `./scripts/build_app.sh` automatically installs the fresh app bundle directly to `/Applications/DynamicIsland.app`:
+```bash
+rm -rf "/Applications/DynamicIsland.app"
+cp -R "build/DynamicIsland.app" "/Applications/DynamicIsland.app"
+```
+Always run, test, and launch the application from `/Applications/DynamicIsland.app`.
 
 ---
 
@@ -58,10 +66,21 @@ The island window is a `DynamicIslandPanel` (subclass of `NSPanel`) with:
   }
   ```
 
-### 3. Notch Sealing (Flat-Top Corners)
-In notch mode, the island top corners must be `0` (`topCornerRadius = 0` via `UnevenRoundedRectangle` and `CALayer.maskedCorners`):
-- Leaving a rounded corner radius at the top creates crescent gaps where mouse movements slip between the bezel and the window.
-- Only the bottom corners (`bottomLeadingRadius`, `bottomTrailingRadius`) receive rounding (`26pt` expanded, `14pt` compact).
+### 3. Notch Sealing & Island Shape Architecture
+- **Compact / Closed State (`NotchIslandShape.swift`)**:
+  - Tangent continuous corner geometry:
+    - Top corners: concave fillets flaring horizontally into the top screen bezel (`compactFlareWidth = 12pt, compactFlareHeight = 10pt`).
+    - Left and right edges: true straight vertical lines (`y = flareHeight ... h - rBottom`).
+    - Bottom corners: convex continuous curves (`rBottom = 12pt`).
+    - Bottom edge: flat horizontal line enclosing the physical camera notch (`notchWidth = 185pt`).
+    - Minimal footprint: In idle, ear width is `44pt` (`compactIslandWidth = 297pt` total) to tightly hug the physical hardware notch while showing a subtle Apple logo on the left and battery percentage on the right. Expands to compact ears when active (`media: 75pt`, `timer: 65pt`, `shelf: 50pt`).
+- **Expanded State (`NotchIslandShape.swift`)**:
+  - The expanded island panel uses `NotchIslandShape` matching the closed state:
+    - Top corners: concave fillets flaring horizontally into the top screen bezel (`flareWidth = 22pt, flareHeight = 18pt`).
+    - Left and right edges: true straight vertical lines (`y = flareHeight ... h - rBottom`).
+    - Bottom corners: convex continuous curves (`cornerRadius = 32pt`).
+    - Bottom edge: flat horizontal line.
+    - Outer container clips `NSVisualEffectView`, dark tint, sheen, and specular rim stroke to this unified shape.
 
 ---
 
@@ -70,18 +89,23 @@ In notch mode, the island top corners must be `0` (`topCornerRadius = 0` via `Un
 ### 1. Private `MediaRemote.framework` Dynamic Binding
 macOS does not expose public headers for `MediaRemote`, but its functions are in the system dyld shared cache.
 We dynamically resolve symbols via `dlopen` and `dlsym`:
-- `MRMediaRemoteGetNowPlayingInfo`: Polls current track metadata and artwork.
+- `MRMediaRemoteGetNowPlayingInfo`: Polls current track metadata and artwork (Note: On macOS 15+, `mediaremoted` restricts NowPlaying info for unentitled app bundles, so browser/system adapters and CoreAudio are used in tandem).
 - `MRMediaRemoteRegisterForNowPlayingNotifications`: Listens to `kMRMediaRemoteNowPlayingInfoDidChangeNotification`.
 - `MRMediaRemoteSendCommand`: Sends native playback commands across the OS.
+- `AudioOutputMonitor` (CoreAudio): Uses `kAudioDevicePropertyDeviceIsRunningSomewhere` and `AudioObjectAddPropertyListenerBlock` to monitor active sound output instantaneously with 0 permissions.
 
 ### 2. `MRMediaRemoteSendCommand` Command IDs
 ```swift
-0 // Play
-1 // Pause
-2 // Toggle Play / Pause
-3 // Next Track
-4 // Previous Track
+0 // Play (kMRPlay)
+1 // Pause (kMRPause)
+2 // Toggle Play / Pause (kMRTogglePlayPause)
+3 // Stop (kMRStop)
+4 // Next Track (kMRNextTrack)
+5 // Previous Track (kMRPreviousTrack)
 ```
+> [!IMPORTANT]
+> **Explicit Play/Pause vs Toggle Gotcha**: Browsers (Google Chrome, Brave, Arc, Edge) often ignore command `2` (`kMRTogglePlayPause`) when paused. To reliably control web playback, always send explicit command `0` (`kMRPlay`) when paused and command `1` (`kMRPause`) when playing.
+> **Direct Boolean State**: Use `MRMediaRemoteGetNowPlayingApplicationIsPlaying` directly rather than relying solely on `MRMediaRemoteGetNowPlayingApplicationPlaybackState` (which can return `<Paused>` for the default player path even when an audio session is actively streaming).
 
 ### 3. Synthetic Media Key Fallback Gotcha
 `NSEvent.otherEvent(with: .systemDefined, ...).cgEvent?.post(tap: .cghidEventTap)` is **silently ignored by macOS** unless the process has Root or Accessibility permissions.
@@ -101,15 +125,15 @@ Production code must strictly reflect real media sessions. Demo player mocks, ti
 - Overlaid with dark tint (`Color.black.opacity(0.52)`), gradient sheen, and a continuous specular border (`stroke`).
 
 ### 2. Expanded Header Structure
-- **Expanded Width:** Fixed at `600pt`.
+- **Expanded Width:** `560pt` (`AppState.expandedWidth`).
 - **Left Ear:** Clickable title `Dynamic Island` (opens Settings / Preferences).
 - **Center Notch Spacer:** Clear cutout matching detected hardware notch width (`max(170, detector.currentNotch.notchWidth)`).
-- **Right Ear:** Inline 4-stat HUD (`CondensedSystemHUDView`) followed by the Pin button (`📌`).
-- **HUD Order:** **CPU → RAM → Disk (used) → Battery**.
+- **Right Ear:** Inline 3-stat HUD (`CondensedSystemHUDView`) followed by the Pin button (`📌`).
+- **HUD Order:** **CPU → RAM → Disk (used)** (Battery removed for compact elegance).
 
 ### 3. Full-Width Tab Bar
 - Tabs: `Media`, `Drop Shelf`, `Timer`, `Clipboard`, `Notes`.
-- Layout: Every tab pill uses `.frame(maxWidth: .infinity)` inside an `HStack(spacing: 4)` so buttons evenly fill the 600pt bar.
+- Layout: Every tab pill uses `.frame(maxWidth: .infinity)` inside an `HStack(spacing: 4)` with `.padding(.horizontal, 40)` giving a generous 20pt margin from the vertical edges of the 560pt island.
 
 ### 4. Centered Timer & Stopwatch
 - Both Countdown Timer and Stopwatch content are centered using `Spacer(minLength: 0)` on both leading and trailing edges.
@@ -120,6 +144,20 @@ Production code must strictly reflect real media sessions. Demo player mocks, ti
 - `IslandContainerView.onDrop` accepts `[.fileURL, .item]`.
 - `.onChange(of: isTargetedForDrop)` expands the island directly to the `dropShelf` tab as soon as dragged files enter the hover zone.
 - Visual feedback is a pulsing 2pt blue border overlay (`Color.blue.opacity(0.8)`).
+
+### 6. Animation Architecture & Spring Physics (`IslandAnimations.swift`)
+- **Physics Calibration (`IslandSpring`)**:
+  - `expand`: `spring(response: 0.38, dampingFraction: 0.75)` — authentic Apple elastic ballooning expansion.
+  - `collapse`: `spring(response: 0.30, dampingFraction: 0.84)` — snappy, clean snap-back to notch.
+  - `tabSlide`: `spring(response: 0.32, dampingFraction: 0.76)` — sliding matched-geometry pill indicators.
+  - `bouncy`: `spring(response: 0.22, dampingFraction: 0.65)` — tactile button click/toggle micro-interaction.
+  - `visualizer`: `spring(response: 0.18, dampingFraction: 0.65, blendDuration: 0.04)` — organic audio wave bounce.
+  - `hover`: `spring(response: 0.25, dampingFraction: 0.75)` — subtle 2% breathing expansion when cursor enters compact zone.
+- **Continuous Shape Interpolation**:
+  - `NotchIslandShape` & `IslandContainerShape` implement `AnimatablePair` across `cornerRadius`, `flareWidth`, and `flareHeight`, ensuring bezier curves and concave fillets morph smoothly without geometry snapping.
+- **Matched Geometry & Asymmetric Transitions**:
+  - Active tab indicators in both main navigation and timer mode use `@Namespace` and `.matchedGeometryEffect` to glide fluidly across pills.
+  - View contents use asymmetric transitions with subtle vertical glide and opacity to eliminate flicker or clipping.
 
 ---
 

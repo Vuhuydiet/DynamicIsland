@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
-public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     public static var shared: AppDelegate!
     public var statusItem: NSStatusItem?
     
@@ -14,13 +15,44 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Run as accessory app (no dock icon, sits in menu bar & floating island)
         NSApp.setActivationPolicy(.accessory)
         
+        // Become the UNUserNotificationCenter delegate so banners show while app is active
+        UNUserNotificationCenter.current().delegate = self
+        
         // Initialize window and notch detector
         _ = NotchDetector.shared
         WindowController.shared.setup()
         
+        // Initialize timer manager (triggers notification permission request)
+        _ = TimerManager.shared
+        
         // Setup menu bar extra
         setupStatusItem()
     }
+    
+    // MARK: - UNUserNotificationCenterDelegate
+    
+    /// Show notification banners even when the app is in the foreground.
+    public func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+    
+    /// Handle notification tap – expand island to Timer tab.
+    public func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        DispatchQueue.main.async {
+            AppState.shared.expand(tab: .timer)
+        }
+        completionHandler()
+    }
+    
+    // MARK: - Status Item
     
     public func updateStatusItemVisibility(_ isVisible: Bool) {
         DispatchQueue.main.async { [weak self] in
@@ -95,7 +127,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             loginItem.state = SettingsManager.shared.launchAtLogin ? .on : .off
         }
     }
-    
 
     @objc public func quitApp() {
         NSApplication.shared.terminate(nil)

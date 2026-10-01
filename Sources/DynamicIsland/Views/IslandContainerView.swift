@@ -30,40 +30,44 @@ public struct IslandContainerView: View {
         max(170.0, detector.currentNotch.notchWidth)
     }
     
-    private var compactLeftEarWidth: CGFloat {
-        (mediaManager.currentTrack.isPlaying || timerManager.isTimerRunning) ? 80.0 : 50.0
-    }
-    
-    private var compactRightEarWidth: CGFloat {
-        mediaManager.currentTrack.isPlaying ? 44.0 : 50.0
+    private var compactEarWidth: CGFloat {
+        appState.compactEarWidth
     }
     
     // Dynamic width calculation
     private var islandWidth: CGFloat {
         if appState.isExpanded {
-            return 600.0
+            return AppState.expandedWidth
         } else {
-            if isNotchMode {
-                return notchWidth + compactLeftEarWidth + compactRightEarWidth + 16.0 + CGFloat(settings.customWidthOffset)
-            } else {
-                let base: CGFloat = (mediaManager.currentTrack.isPlaying || timerManager.isTimerRunning) ? 230.0 : 185.0
-                return base + CGFloat(settings.customWidthOffset)
-            }
+            return appState.compactIslandWidth
         }
     }
     
     // Dynamic height calculation (strictly anchored to top, perfectly stable across all tabs)
     private var islandHeight: CGFloat {
         if appState.isExpanded {
-            let contentH: CGFloat = 165.0
-            return notchTopInset + 38.0 + contentH + 16.0
+            return appState.expandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
         } else {
             return isNotchMode ? max(34.0, detector.currentNotch.notchHeight) : 34.0
         }
     }
     
+    private var currentFlareWidth: CGFloat {
+        if isNotchMode {
+            return appState.isExpanded ? NotchIslandShape.expandedFlareWidth : NotchIslandShape.compactFlareWidth
+        }
+        return 0
+    }
+    
+    private var currentFlareHeight: CGFloat {
+        if isNotchMode {
+            return appState.isExpanded ? NotchIslandShape.expandedFlareHeight : NotchIslandShape.compactFlareHeight
+        }
+        return 0
+    }
+    
     private var cornerRadius: CGFloat {
-        appState.isExpanded ? 26.0 : (isNotchMode ? 14.0 : 17.0)
+        appState.isExpanded ? 32.0 : (isNotchMode ? 14.0 : 17.0)
     }
 
     /// Top corners are always 0 in notch mode so the island is flush against
@@ -72,122 +76,167 @@ public struct IslandContainerView: View {
         isNotchMode ? 0 : cornerRadius
     }
     
+    private var containerShape: IslandContainerShape {
+        IslandContainerShape(
+            isNotchMode: isNotchMode,
+            cornerRadius: cornerRadius,
+            flareWidth: currentFlareWidth,
+            flareHeight: currentFlareHeight
+        )
+    }
+    
     public var body: some View {
         VStack(spacing: 0) {
             // Main Island Body: ZStack strictly aligned to top
             ZStack(alignment: .top) {
-                // ── Liquid Glass background ──────────────────────────────
-                if appState.isExpanded {
-                    // Frosted material layer (AppKit NSVisualEffectView)
+                // ── Continuous Background — theme-aware, cross-faded ─────────
+
+                // Helpers: opacity values driven by theme + expansion state
+                let isDark  = settings.islandTheme == .dark
+                let isLight = settings.islandTheme == .light
+
+                // 1. Base layer
+                //    • LiquidGlass / Dark: near-black fill (compact = opaque, expanded = semi-trans)
+                //    • Light: white/near-white fill
+                containerShape
+                    .fill(isLight
+                        ? Color.white.opacity(appState.isExpanded ? 0.80 : 0.95)
+                        : Color.black.opacity(
+                            isDark
+                                ? (appState.isExpanded ? 0.82 : 1.0)   // dark: keep solid
+                                : (appState.isExpanded ? 0.62 : 1.0)   // liquidGlass default
+                          )
+                    )
+
+                // 2. Frosted material (NSVisualEffectView) — only for LiquidGlass + Light
+                if !isDark {
                     LiquidGlassBackground(cornerRadius: cornerRadius, topCornerRadius: topCornerRadius)
-                        .opacity(0.92)
-
-                    // Dark tint to deepen contrast on the glass
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.black.opacity(0.52))
-
-                    // Subtle gradient sheen — light at top, transparent at bottom
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.white.opacity(0.06),
-                                    Color.clear
-                                ]),
-                                startPoint: .top,
-                                endPoint: .center
-                            )
-                        )
-
-                    // Specular rim (bright top edge)
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                gradient: Gradient(stops: [
-                                    .init(color: Color.white.opacity(appState.isHovering ? 0.38 : 0.22), location: 0.0),
-                                    .init(color: Color.white.opacity(0.08), location: 0.35),
-                                    .init(color: Color.white.opacity(0.04), location: 1.0)
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
-                        .shadow(color: Color.white.opacity(0.08), radius: 2, x: 0, y: -1)
-
-                } else {
-                    // Compact — plain opaque black pill
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.black)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                                .stroke(
-                                    appState.isHovering
-                                        ? Color.white.opacity(0.22)
-                                        : Color.white.opacity(0.12),
-                                    lineWidth: 1
-                                )
-                        )
+                        .opacity(appState.isExpanded ? (isLight ? 0.75 : 0.92) : 0.0)
                 }
 
-                // Drop shadow
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                // 3. Expanded secondary tint for depth
+                containerShape
+                    .fill(isLight
+                        ? Color.white.opacity(appState.isExpanded ? 0.18 : 0.0)  // keep bright
+                        : Color.black.opacity(
+                            isDark
+                                ? (appState.isExpanded ? 0.22 : 0.0)
+                                : (appState.isExpanded ? 0.35 : 0.0)
+                          )
+                    )
+
+                // 4. Gradient sheen
+                containerShape
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                (isLight
+                                    ? Color.white.opacity(appState.isExpanded ? 0.55 : 0.0)
+                                    : Color.white.opacity(appState.isExpanded ? 0.06 : 0.0)
+                                ),
+                                Color.clear
+                            ]),
+                            startPoint: .top,
+                            endPoint: .center
+                        )
+                    )
+
+                // 5. Specular rim
+                containerShape
+                    .stroke(
+                        LinearGradient(
+                            gradient: Gradient(stops: [
+                                .init(color: (isLight
+                                    ? Color.black.opacity(appState.isExpanded ? 0.12 : 0.0)
+                                    : Color.white.opacity(appState.isExpanded ? (appState.isHovering ? 0.38 : 0.22) : 0.0)
+                                ), location: 0.0),
+                                .init(color: (isLight
+                                    ? Color.black.opacity(appState.isExpanded ? 0.04 : 0.0)
+                                    : Color.white.opacity(appState.isExpanded ? 0.08 : 0.0)
+                                ), location: 0.35),
+                                .init(color: Color.clear, location: 1.0)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                    .shadow(color: (isLight
+                        ? Color.black.opacity(appState.isExpanded ? 0.05 : 0.0)
+                        : Color.white.opacity(appState.isExpanded ? 0.08 : 0.0)
+                    ), radius: 2, x: 0, y: -1)
+
+                // 6. Compact sleek border
+                containerShape
+                    .stroke(
+                        appState.isHovering
+                            ? (isLight ? Color.black.opacity(0.18) : Color.white.opacity(0.24))
+                            : (isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.12)),
+                        lineWidth: 1
+                    )
+                    .opacity(appState.isExpanded ? 0.0 : 1.0)
+
+                // 7. Drop shadow
+                containerShape
                     .fill(Color.clear)
                     .shadow(
-                        color: Color.black.opacity(appState.isExpanded ? 0.7 : 0.3),
+                        color: Color.black.opacity(appState.isExpanded ? 0.70 : 0.30),
                         radius: appState.isExpanded ? 28 : 8,
                         x: 0,
                         y: appState.isExpanded ? 14 : 3
                     )
                 
-                // Content View (Compact vs Expanded)
+                // Content View (Compact vs Expanded) with orchestrated asymmetric reveal
                 Group {
                     if appState.isExpanded {
                         ExpandedIslandView()
-                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top))
+                                        .animation(IslandSpring.expand.delay(0.04)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
+                                        .animation(.easeOut(duration: 0.12))
+                                )
+                            )
                     } else {
                         CompactIslandView()
-                            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.88, anchor: .top))
+                                        .animation(IslandSpring.collapse.delay(0.06)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.82, anchor: .top))
+                                        .animation(.easeOut(duration: 0.10))
+                                )
+                            )
                     }
                 }
             }
             .frame(width: islandWidth, height: islandHeight, alignment: .top)
-            // CLIP SHAPE: flat top in notch mode → no gap between island and screen edge
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: topCornerRadius,
-                    bottomLeadingRadius: cornerRadius,
-                    bottomTrailingRadius: cornerRadius,
-                    topTrailingRadius: topCornerRadius,
-                    style: .continuous
-                )
-            )
+            // CLIP SHAPE: NotchIslandShape with smoothly interpolated top fillets and bottom corners
+            .clipShape(containerShape)
             // Drop shelf glow when a drag is hovering over the island
             .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: topCornerRadius,
-                    bottomLeadingRadius: cornerRadius,
-                    bottomTrailingRadius: cornerRadius,
-                    topTrailingRadius: topCornerRadius,
-                    style: .continuous
-                )
-                .stroke(
-                    isTargetedForDrop ? Color.blue.opacity(0.8) : Color.clear,
-                    lineWidth: isTargetedForDrop ? 2 : 0
-                )
-                .shadow(
-                    color: isTargetedForDrop ? Color.blue.opacity(0.5) : .clear,
-                    radius: 12
-                )
-                .animation(.easeInOut(duration: 0.15), value: isTargetedForDrop)
+                containerShape
+                    .stroke(
+                        isTargetedForDrop ? Color.blue.opacity(0.8) : Color.clear,
+                        lineWidth: isTargetedForDrop ? 2 : 0
+                    )
+                    .shadow(
+                        color: isTargetedForDrop ? Color.blue.opacity(0.5) : .clear,
+                        radius: 12
+                    )
+                    .animation(IslandSpring.bouncy, value: isTargetedForDrop)
             )
-            .animation(.spring(response: 0.28, dampingFraction: 0.82, blendDuration: 0), value: appState.isExpanded)
-            .animation(.spring(response: 0.28, dampingFraction: 0.82, blendDuration: 0), value: appState.activeTab)
+            // Subtle breathing hover when idle in compact mode
+            .scaleEffect(appState.isHovering && !appState.isExpanded ? 1.02 : 1.0, anchor: .top)
+            .animation(IslandSpring.hover, value: appState.isHovering)
+            .animation(appState.isExpanded ? IslandSpring.expand : IslandSpring.collapse, value: appState.isExpanded)
+            .animation(IslandSpring.tabSlide, value: appState.activeTab)
             .onHover { hovering in
-                if hovering {
-                    appState.handleMouseEnter()
-                } else {
-                    appState.handleMouseLeave()
+                if appState.isExpanded {
+                    if !hovering {
+                        appState.handleMouseLeave()
+                    }
                 }
             }
             // Accept any file being dragged — expand to Drop Shelf immediately on enter

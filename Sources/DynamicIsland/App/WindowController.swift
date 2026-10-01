@@ -31,6 +31,55 @@ public class DynamicIslandPanel: NSPanel {
     }
 }
 
+public class DynamicIslandHostingView: NSHostingView<IslandContainerView> {
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        let appState = AppState.shared
+        let detector = NotchDetector.shared
+        let settings = SettingsManager.shared
+        
+        let isNotchMode: Bool
+        switch settings.notchStyle {
+        case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
+        case .notch: isNotchMode = true
+        case .floating: isNotchMode = false
+        }
+        
+        let bounds = self.bounds
+        let centerX = bounds.midX
+        let topY = bounds.maxY
+        
+        if appState.isExpanded {
+            let expandedW: CGFloat = AppState.expandedWidth
+            let expandedH = appState.expandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
+            let margin: CGFloat = 14.0
+            
+            let inX = point.x >= (centerX - expandedW / 2.0 - margin)
+                   && point.x <= (centerX + expandedW / 2.0 + margin)
+            let inY = point.y >= (topY - expandedH - margin)
+            
+            if inX && inY {
+                return super.hitTest(point)
+            }
+            return nil
+        } else {
+            // Compact mode: physical notch plus active ears
+            let notchH = detector.currentNotch.notchHeight > 0 ? detector.currentNotch.notchHeight : 32.0
+            let compactW = appState.compactIslandWidth
+            let compactH = isNotchMode ? notchH : 34.0
+            let topInset: CGFloat = isNotchMode ? 0.0 : 8.0
+            
+            let inX = point.x >= (centerX - compactW / 2.0)
+                   && point.x <= (centerX + compactW / 2.0)
+            let inY = point.y >= (topY - topInset - compactH)
+            
+            if inX && inY {
+                return super.hitTest(point)
+            }
+            return nil
+        }
+    }
+}
+
 public class WindowController: ObservableObject {
     public static let shared = WindowController()
     
@@ -72,7 +121,7 @@ public class WindowController: ObservableObject {
         let rect = NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight)
         let newPanel = DynamicIslandPanel(contentRect: rect)
         
-        let hostingView = NSHostingView(rootView: IslandContainerView())
+        let hostingView = DynamicIslandHostingView(rootView: IslandContainerView())
         hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
         newPanel.contentView = hostingView
         
@@ -123,21 +172,33 @@ public class WindowController: ObservableObject {
             }
         }
         
-        // Global mouse movement monitor: collapses island when cursor leaves its bounds.
+        // Global mouse movement monitor: handles mouse-enter hover detection and collapses when cursor leaves bounds.
         // NOTE: We do NOT use NSRect.contains because it is exclusive of the max edge —
         // a point at exactly screen.frame.maxY (the screen top) would fail the check and
         // incorrectly trigger a collapse. Instead we use an open-top boundary: only
         // collapse when the mouse is BELOW the island or outside its horizontal range.
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            guard let _ = self else { return }
+            guard let self = self else { return }
             let appState = AppState.shared
-            guard appState.isExpanded && !appState.isPinned else { return }
+            guard let screen = self.panel?.screen ?? NSScreen.main else { return }
 
-            if let screen = NSScreen.main {
-                let mouse = NSEvent.mouseLocation
-                let islandW: CGFloat = 620.0
-                let islandBottom: CGFloat = screen.frame.maxY - 340.0  // panel origin Y
-                let margin: CGFloat = 10.0
+            let mouse = NSEvent.mouseLocation
+            let detector = NotchDetector.shared
+            let settings = SettingsManager.shared
+            let isNotchMode: Bool
+            switch settings.notchStyle {
+            case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
+            case .notch: isNotchMode = true
+            case .floating: isNotchMode = false
+            }
+
+            if appState.isExpanded {
+                guard !appState.isPinned else { return }
+
+                let islandW: CGFloat = AppState.expandedWidth
+                let expandedH = appState.expandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
+                let islandBottom: CGFloat = screen.frame.maxY - expandedH
+                let margin: CGFloat = 14.0
 
                 let inX = mouse.x >= (screen.frame.midX - islandW / 2.0 - margin)
                        && mouse.x <= (screen.frame.midX + islandW / 2.0 + margin)
@@ -149,6 +210,32 @@ public class WindowController: ObservableObject {
                     DispatchQueue.main.async {
                         if appState.isExpanded && !appState.isPinned {
                             appState.handleMouseLeave()
+                        }
+                    }
+                }
+            } else {
+                guard settings.expandTrigger == .hoverAndClick else { return }
+
+                let notchH = detector.currentNotch.notchHeight > 0 ? detector.currentNotch.notchHeight : 32.0
+                let compactW = appState.compactIslandWidth
+                let compactH = isNotchMode ? notchH : 34.0
+                let topInset: CGFloat = isNotchMode ? 0.0 : 8.0
+
+                let inX = mouse.x >= (screen.frame.midX - compactW / 2.0)
+                       && mouse.x <= (screen.frame.midX + compactW / 2.0)
+                let compactBottom = screen.frame.maxY - topInset - compactH
+                let inY = mouse.y >= compactBottom
+
+                if inX && inY {
+                    DispatchQueue.main.async {
+                        if !appState.isExpanded {
+                            appState.handleMouseEnter()
+                        }
+                    }
+                } else if appState.isHovering && !appState.isExpanded {
+                    DispatchQueue.main.async {
+                        if !appState.isExpanded {
+                            appState.cancelHover()
                         }
                     }
                 }

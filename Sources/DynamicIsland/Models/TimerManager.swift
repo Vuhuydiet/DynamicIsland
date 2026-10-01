@@ -20,6 +20,8 @@ public class TimerManager: ObservableObject {
     @Published public var remainingSeconds: Int = 300
     @Published public var isTimerRunning: Bool = false
     @Published public var isTimerPaused: Bool = false
+    /// Set to true when the countdown reaches zero; cleared on start/reset/dismiss.
+    @Published public var isTimerFinished: Bool = false
     
     // Stopwatch state
     @Published public var stopwatchElapsed: Double = 0.0
@@ -28,14 +30,22 @@ public class TimerManager: ObservableObject {
     
     private var countdownTimer: Timer?
     private var stopwatchTimer: Timer?
+    private var alertRepeatTimer: Timer?
     
     private init() {
         requestNotificationPermission()
     }
     
     private func requestNotificationPermission() {
-        guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleIdentifier != "com.apple.Terminal" else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        guard Bundle.main.bundleIdentifier != nil,
+              Bundle.main.bundleIdentifier != "com.apple.Terminal" else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("[TimerManager] Notification auth error: \(error)")
+            } else if !granted {
+                print("[TimerManager] Notification permission denied.")
+            }
+        }
     }
     
     // MARK: - Countdown Timer Controls
@@ -48,6 +58,8 @@ public class TimerManager: ObservableObject {
         
         isTimerRunning = true
         isTimerPaused = false
+        isTimerFinished = false
+        stopAlertRepeat()
         SoundManager.shared.play(.click)
         
         countdownTimer?.invalidate()
@@ -76,24 +88,72 @@ public class TimerManager: ObservableObject {
         countdownTimer?.invalidate()
         isTimerRunning = false
         isTimerPaused = false
+        isTimerFinished = false
         remainingSeconds = totalSeconds
+        stopAlertRepeat()
         SoundManager.shared.play(.click)
+    }
+    
+    /// Dismiss the finished banner without resetting the timer.
+    public func dismissFinished() {
+        isTimerFinished = false
+        stopAlertRepeat()
+    }
+    
+    // MARK: - Alert helpers
+    private func stopAlertRepeat() {
+        alertRepeatTimer?.invalidate()
+        alertRepeatTimer = nil
     }
     
     private func timerFinished() {
         countdownTimer?.invalidate()
         isTimerRunning = false
         isTimerPaused = false
-        SoundManager.shared.play(.timerAlert)
+        isTimerFinished = true
         
-        if Bundle.main.bundleIdentifier != nil {
-            let content = UNMutableNotificationContent()
-            content.title = "Dynamic Island Timer"
-            content.body = "Your timer has completed!"
-            content.sound = UNNotificationSound.default
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            UNUserNotificationCenter.current().add(request)
+        // Play sound immediately, repeat 2 more times for prominence
+        SoundManager.shared.play(.timerAlert)
+        var repeatsLeft = 2
+        alertRepeatTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] t in
+            guard let self = self else { t.invalidate(); return }
+            SoundManager.shared.play(.timerAlert)
+            repeatsLeft -= 1
+            if repeatsLeft <= 0 {
+                self.alertRepeatTimer?.invalidate()
+                self.alertRepeatTimer = nil
+            }
         }
+        
+        // System notification
+        guard Bundle.main.bundleIdentifier != nil,
+              Bundle.main.bundleIdentifier != "com.apple.Terminal" else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "⏱ Timer Finished!"
+        content.body = "Your \(formatDuration(totalSeconds)) timer has ended."
+        content.sound = UNNotificationSound.default
+        content.interruptionLevel = .timeSensitive
+        let request = UNNotificationRequest(
+            identifier: "timer-finished-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("[TimerManager] Notification error: \(error)")
+            }
+        }
+    }
+    
+    private func formatDuration(_ seconds: Int) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 && s > 0 { return "\(m)m \(s)s" }
+        if m > 0 { return "\(m)m" }
+        return "\(s)s"
     }
     
     // MARK: - Stopwatch Controls

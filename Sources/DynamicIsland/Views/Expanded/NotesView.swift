@@ -30,16 +30,18 @@ public struct NotesView: View {
                         .font(IslandFont.caption)
                         .foregroundColor(.white.opacity(0.8))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
                     
                     Button(action: {
-                        notes.clear()
+                        withAnimation(IslandSpring.bouncy) {
+                            notes.clear()
+                        }
                     }) {
                         Text("Clear")
                             .font(IslandFont.caption)
                             .foregroundColor(.white.opacity(0.5))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
                 }
             }
             .padding(.horizontal, 14)

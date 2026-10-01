@@ -32,13 +32,15 @@ public struct DropShelfView: View {
                 
                 if !dropManager.items.isEmpty {
                     Button(action: {
-                        dropManager.clearAll()
+                        withAnimation(IslandSpring.bouncy) {
+                            dropManager.clearAll()
+                        }
                     }) {
                         Text("Clear All")
                             .font(IslandFont.caption)
                             .foregroundColor(.white.opacity(0.6))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
                 }
             }
             .padding(.horizontal, 14)
@@ -52,7 +54,7 @@ public struct DropShelfView: View {
                         .font(.system(size: 26, weight: .light))
                         .foregroundColor(isTargeted ? .blue : .white.opacity(0.35))
                         .scaleEffect(isTargeted ? 1.15 : 1.0)
-                        .animation(.spring(response: 0.3), value: isTargeted)
+                        .animation(IslandSpring.bouncy, value: isTargeted)
                     
                     Text("Drag & Drop any file, image, or link here")
                         .font(IslandFont.subtitle)
@@ -71,6 +73,8 @@ public struct DropShelfView: View {
                             style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
                         )
                 )
+                .scaleEffect(isTargeted ? 1.02 : 1.0)
+                .animation(IslandSpring.bouncy, value: isTargeted)
                 .padding(.horizontal, 14)
             } else {
                 // List of dropped items
@@ -78,11 +82,13 @@ public struct DropShelfView: View {
                     HStack(spacing: 10) {
                         ForEach(dropManager.items) { item in
                             DroppedItemCard(item: item)
+                                .transition(.scale(scale: 0.85).combined(with: .opacity))
                         }
                     }
                     .padding(.horizontal, 14)
                 }
                 .frame(height: 100)
+                .animation(IslandSpring.bouncy, value: dropManager.items.count)
             }
         }
         .padding(.bottom, 6)
@@ -132,14 +138,17 @@ public struct DroppedItemCard: View {
                 // Remove button on hover
                 if isHovering {
                     Button(action: {
-                        dropManager.removeItem(id: item.id)
+                        withAnimation(IslandSpring.bouncy) {
+                            dropManager.removeItem(id: item.id)
+                        }
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(IslandFont.iconRegular)
                             .foregroundColor(.white.opacity(0.85))
                             .background(Circle().fill(Color.black.opacity(0.6)))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.85))
+                    .transition(.scale(scale: 0.7).combined(with: .opacity))
                     .offset(x: 4, y: -4)
                 }
             }
@@ -161,9 +170,15 @@ public struct DroppedItemCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(isHovering ? Color.white.opacity(0.22) : Color.white.opacity(0.08), lineWidth: 1)
         )
-        .onHover { isHovering = $0 }
+        .scaleEffect(isHovering ? 1.05 : 1.0)
+        .animation(IslandSpring.bouncy, value: isHovering)
+        .onHover { hovering in
+            withAnimation(IslandSpring.bouncy) {
+                isHovering = hovering
+            }
+        }
         .onDrag {
             NSItemProvider(contentsOf: item.url) ?? NSItemProvider()
         }
