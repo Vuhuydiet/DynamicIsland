@@ -36,8 +36,44 @@ public class DropShelfManager: ObservableObject {
     public static let shared = DropShelfManager()
     
     @Published public var items: [DroppedItem] = []
+    @Published public var selectedItemIDs: Set<UUID> = []
     
     private init() {}
+    
+    public func toggleSelection(id: UUID) {
+        if selectedItemIDs.contains(id) {
+            selectedItemIDs.remove(id)
+        } else {
+            selectedItemIDs.insert(id)
+        }
+        SoundManager.shared.play(.click)
+    }
+    
+    public func selectSingle(id: UUID) {
+        selectedItemIDs = [id]
+    }
+    
+    public func selectAll() {
+        selectedItemIDs = Set(items.map { $0.id })
+        SoundManager.shared.play(.click)
+    }
+    
+    public func clearSelection() {
+        selectedItemIDs.removeAll()
+        SoundManager.shared.play(.click)
+    }
+    
+    public func isSelected(id: UUID) -> Bool {
+        selectedItemIDs.contains(id)
+    }
+    
+    public func selectedURLs(including fallbackURL: URL? = nil) -> [URL] {
+        let selected = items.filter { selectedItemIDs.contains($0.id) }.map { $0.url }
+        if selected.isEmpty, let fallback = fallbackURL {
+            return [fallback]
+        }
+        return selected
+    }
     
     public func handleDrop(providers: [NSItemProvider]) {
         var collectedURLs: [URL] = []
@@ -107,11 +143,19 @@ public class DropShelfManager: ObservableObject {
     
     public func removeItem(id: UUID) {
         items.removeAll(where: { $0.id == id })
+        selectedItemIDs.remove(id)
         SoundManager.shared.play(.click)
     }
     
     public func clearAll() {
         items.removeAll()
+        selectedItemIDs.removeAll()
+        SoundManager.shared.play(.click)
+    }
+
+    public func removeSelected() {
+        items.removeAll(where: { selectedItemIDs.contains($0.id) })
+        selectedItemIDs.removeAll()
         SoundManager.shared.play(.click)
     }
     
