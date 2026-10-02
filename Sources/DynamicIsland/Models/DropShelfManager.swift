@@ -37,18 +37,7 @@ public class DropShelfManager: ObservableObject {
     
     @Published public var items: [DroppedItem] = []
     
-    private init() {
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.addShelfItems"),
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            if let path = note.object as? String {
-                let url = URL(fileURLWithPath: path)
-                self?.addItems(urls: [url])
-            }
-        }
-    }
+    private init() {}
     
     public func handleDrop(providers: [NSItemProvider]) {
         var collectedURLs: [URL] = []
