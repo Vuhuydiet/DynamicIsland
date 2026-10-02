@@ -153,18 +153,27 @@ public struct MediaView: View {
             }
             
             // MARK: - Controls Row (Centered Playback Controls)
-            HStack(spacing: 32) {
+            HStack(spacing: 28) {
                 Spacer()
                 
                 // Previous
                 Button(action: {
                     mediaManager.previousTrack()
                 }) {
-                    Image(systemName: "backward.fill")
-                        .font(IslandFont.iconLarge)
-                        .foregroundColor(.white)
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.10))
+                            .frame(width: 38, height: 38)
+                        
+                        Image(systemName: "backward.fill")
+                            .font(IslandFont.iconLarge)
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.86))
+                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.88))
+                .help("Previous Track")
                 
                 // Play / Pause / Stop
                 Button(action: {
@@ -173,28 +182,40 @@ public struct MediaView: View {
                     ZStack {
                         Circle()
                             .fill(Color.white)
-                            .frame(width: 40, height: 40)
+                            .frame(width: 42, height: 42)
+                            .shadow(color: Color.white.opacity(mediaManager.currentTrack.isPlaying ? 0.35 : 0.15), radius: 6, y: 2)
                         
                         Image(systemName: playButtonIconName)
-                            .font(IslandFont.iconLarge)
+                            .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.black)
                             .offset(x: mediaManager.currentTrack.isPlaying ? 0 : 1.5)
                             .scaleEffect(mediaManager.currentTrack.isPlaying ? 1.0 : 1.06)
                             .animation(IslandSpring.bouncy, value: mediaManager.currentTrack.isPlaying)
                     }
+                    .frame(width: 48, height: 48)
+                    .contentShape(Circle())
                 }
-                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.88))
+                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
                 .help(mediaManager.currentTrack.isPlaying ? "Pause" : "Play")
                 
                 // Next
                 Button(action: {
                     mediaManager.nextTrack()
                 }) {
-                    Image(systemName: "forward.fill")
-                        .font(IslandFont.iconLarge)
-                        .foregroundColor(.white)
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.10))
+                            .frame(width: 38, height: 38)
+                        
+                        Image(systemName: "forward.fill")
+                            .font(IslandFont.iconLarge)
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.86))
+                .buttonStyle(BouncyButtonStyle(scaleAmount: 0.88))
+                .help("Next Track")
                 
                 Spacer()
             }

@@ -28,6 +28,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         // Initialize settings controller to observe notifications
         _ = SettingsWindowController.shared
         
+        // Initialize media manager to begin observing system playback
+        _ = MediaManager.shared
+        
         // Setup menu bar extra
         setupStatusItem()
     }
