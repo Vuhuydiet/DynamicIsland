@@ -69,7 +69,7 @@ public struct ClipboardView: View {
                     }
                     .padding(.horizontal, 14)
                 }
-                .frame(height: 96)
+                .frame(maxHeight: 120)
                 .animation(IslandSpring.bouncy, value: clipboard.filteredHistory.count)
             }
         }
@@ -83,50 +83,70 @@ public struct ClipboardRow: View {
     @State private var isHovering = false
     
     public var body: some View {
-        Button(action: {
-            withAnimation(IslandSpring.bouncy) {
-                clipboard.copyToClipboard(item)
-            }
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: item.isURL ? "link" : "doc.text")
-                    .font(IslandFont.iconRegular)
-                    .foregroundColor(item.isURL ? .blue : .white.opacity(0.5))
-                
-                Text(item.content)
-                    .font(item.isURL ? IslandFont.timeNumeric : IslandFont.body)
-                    .foregroundColor(.white.opacity(0.9))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                
-                Spacer()
-                
-                if clipboard.recentlyCopiedId == item.id {
-                    HStack(spacing: 3) {
-                        Image(systemName: "checkmark")
-                            .font(IslandFont.iconMicro)
-                        Text("Copied")
-                            .font(IslandFont.micro)
-                    }
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.green.opacity(0.2))
-                    .clipShape(Capsule())
-                    .transition(.scale(scale: 0.7).combined(with: .opacity))
-                } else {
-                    Text("Copy")
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(isHovering ? 0.8 : 0.4))
+        HStack(spacing: 6) {
+            Button(action: {
+                withAnimation(IslandSpring.bouncy) {
+                    clipboard.copyToClipboard(item)
                 }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: item.isURL ? "link" : "doc.text")
+                        .font(IslandFont.iconRegular)
+                        .foregroundColor(item.isURL ? .blue : .white.opacity(0.5))
+                    
+                    Text(item.content)
+                        .font(item.isURL ? IslandFont.timeNumeric : IslandFont.body)
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    
+                    Spacer()
+                    
+                    if clipboard.recentlyCopiedId == item.id {
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark")
+                                .font(IslandFont.iconMicro)
+                            Text("Copied")
+                                .font(IslandFont.micro)
+                        }
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.2))
+                        .clipShape(Capsule())
+                        .transition(.scale(scale: 0.7).combined(with: .opacity))
+                    } else {
+                        Text("Copy")
+                            .font(IslandFont.caption)
+                            .foregroundColor(.white.opacity(isHovering ? 0.8 : 0.4))
+                    }
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(isHovering ? Color.white.opacity(0.10) : Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .animation(IslandSpring.bouncy, value: clipboard.recentlyCopiedId)
+            .buttonStyle(.plain)
+            
+            if isHovering {
+                Button(action: {
+                    withAnimation(IslandSpring.bouncy) {
+                        clipboard.deleteItem(item)
+                    }
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.white.opacity(0.4))
+                        .frame(width: 16, height: 16)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity)
+            }
         }
-        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.98))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isHovering ? Color.white.opacity(0.10) : Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .animation(IslandSpring.bouncy, value: clipboard.recentlyCopiedId)
         .onHover { hovering in
             withAnimation(IslandSpring.bouncy) {
                 isHovering = hovering

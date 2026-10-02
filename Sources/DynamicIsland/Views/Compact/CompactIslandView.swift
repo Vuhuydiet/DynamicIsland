@@ -79,7 +79,18 @@ public struct CompactIslandView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             SoundManager.shared.play(.click)
-            appState.toggleExpand()
+            if timerManager.isTimerFinished {
+                timerManager.mode = .timer
+                appState.expand(tab: .timer)
+            } else if timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0 {
+                timerManager.mode = .stopwatch
+                appState.expand(tab: .timer)
+            } else if timerManager.isTimerRunning {
+                timerManager.mode = .timer
+                appState.expand(tab: .timer)
+            } else {
+                appState.toggleExpand()
+            }
         }
         .onChange(of: timerManager.isTimerFinished) { _, finished in
             guard finished else { bellWobble = false; return }
@@ -94,170 +105,18 @@ public struct CompactIslandView: View {
     // MARK: - Left Ear Content
     @ViewBuilder
     private var leftEarContent: some View {
-        HStack(spacing: 6) {
-            if timerManager.isTimerFinished {
-                // Timer done — animated bell
-                Image(systemName: "bell.fill")
-                    .font(IslandFont.iconMicro)
-                    .foregroundColor(.orange)
-                    .rotationEffect(.degrees(bellWobble ? 18 : -18))
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if timerManager.isTimerRunning {
-                HStack(spacing: 4) {
-                    Image(systemName: "timer")
-                        .font(IslandFont.iconMicro)
-                        .foregroundColor(.orange)
-                    Text(timerManager.formattedRemainingTime)
-                        .font(IslandFont.timeNumeric)
-                        .foregroundColor(.orange)
-                        .lineLimit(1)
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if mediaManager.currentTrack.isPlaying {
-                HStack(spacing: 5) {
-                    Image(systemName: mediaManager.currentTrack.source.iconName)
-                        .font(IslandFont.iconMicro)
-                        .foregroundColor(mediaManager.currentTrack.source.accentColor)
-                    Text(mediaManager.currentTrack.title)
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.92))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
-                HStack(spacing: 5) {
-                    Image(systemName: mediaManager.currentTrack.source.iconName)
-                        .font(IslandFont.iconMicro)
-                        .foregroundColor(mediaManager.currentTrack.source.accentColor.opacity(0.85))
-                    Text(mediaManager.currentTrack.title)
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.75))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if !dropShelfManager.items.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "tray.and.arrow.down.fill")
-                        .font(IslandFont.iconMicro)
-                        .foregroundColor(.blue)
-                    Text("\(dropShelfManager.items.count)")
-                        .font(IslandFont.metricNumeric)
-                        .foregroundColor(.blue)
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else {
-                // Idle Brand Logo: compact Apple logo
-                Image(systemName: "apple.logo")
-                    .font(IslandFont.iconSmall)
-                    .foregroundColor(.white.opacity(0.70))
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            }
+        switch settings.closedNotchStyle {
+        case .defaultStyle:
+            ClassicCompactLeftEarView(bellWobble: bellWobble)
         }
-        .animation(IslandSpring.bouncy, value: timerManager.isTimerFinished)
-        .animation(IslandSpring.bouncy, value: timerManager.isTimerRunning)
-        .animation(IslandSpring.bouncy, value: mediaManager.currentTrack.isPlaying)
-        .animation(IslandSpring.bouncy, value: dropShelfManager.items.isEmpty)
     }
 
     // MARK: - Right Ear Content
     @ViewBuilder
     private var rightEarContent: some View {
-        HStack(spacing: 6) {
-            if timerManager.isTimerFinished {
-                // "Done!" label with pulsing dot
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 5, height: 5)
-                        .scaleEffect(bellWobble ? 1.4 : 0.8)
-                    Text("Done!")
-                        .font(IslandFont.caption)
-                        .foregroundColor(.orange)
-                        .lineLimit(1)
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if timerManager.isTimerRunning {
-                HStack(spacing: 4) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1.5)
-                        Circle()
-                            .trim(from: 0, to: CGFloat(timerManager.progress))
-                            .stroke(Color.orange, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                            .animation(.linear(duration: 0.25), value: timerManager.progress)
-                    }
-                    .frame(width: 12, height: 12)
-                    Text("Timer")
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.70))
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if mediaManager.currentTrack.isPlaying {
-                HStack(spacing: 5) {
-                    let artistText: String = {
-                        if !mediaManager.currentTrack.artist.isEmpty &&
-                            mediaManager.currentTrack.artist != "Unknown Artist" &&
-                            mediaManager.currentTrack.artist != mediaManager.currentTrack.title {
-                            return mediaManager.currentTrack.artist
-                        }
-                        if mediaManager.currentTrack.source != .none && mediaManager.currentTrack.source != .mediaRemote {
-                            return mediaManager.currentTrack.source.rawValue
-                        }
-                        return ""
-                    }()
-
-                    if !artistText.isEmpty {
-                        Text(artistText)
-                            .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.65))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: 80, alignment: .trailing)
-                    }
-                    EqualizerVisualizerView(tint: mediaManager.currentTrack.source.accentColor, maxHeight: 11)
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
-                HStack(spacing: 4) {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.white.opacity(0.6))
-                    Text("Paused")
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if !dropShelfManager.items.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "folder.fill")
-                        .font(IslandFont.iconMicro)
-                        .foregroundColor(.blue.opacity(0.8))
-                    Text("Shelf")
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else {
-                // Idle: Battery indicator
-                HStack(spacing: 3) {
-                    Text("\(systemMonitor.stats.batteryPercent)%")
-                        .font(IslandFont.timeNumeric)
-                        .foregroundColor(.white.opacity(0.80))
-                        .lineLimit(1)
-
-                    Image(systemName: systemMonitor.stats.isCharging ? "bolt.fill" : "battery.75")
-                        .font(IslandFont.iconMicro)
-                        .foregroundColor(systemMonitor.stats.isCharging ? .green : .white.opacity(0.80))
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            }
+        switch settings.closedNotchStyle {
+        case .defaultStyle:
+            ClassicCompactRightEarView(bellWobble: bellWobble)
         }
-        .animation(IslandSpring.bouncy, value: timerManager.isTimerFinished)
-        .animation(IslandSpring.bouncy, value: timerManager.isTimerRunning)
-        .animation(IslandSpring.bouncy, value: mediaManager.currentTrack.isPlaying)
-        .animation(IslandSpring.bouncy, value: dropShelfManager.items.isEmpty)
     }
 }

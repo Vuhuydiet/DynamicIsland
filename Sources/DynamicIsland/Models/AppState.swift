@@ -65,20 +65,27 @@ public class AppState: ObservableObject {
     
     public static let expandedWidth: CGFloat = 560.0
     
+    public var expandedWidth: CGFloat {
+        AppState.expandedWidth
+    }
+    
     public var compactEarWidth: CGFloat {
         let base: CGFloat
-        if TimerManager.shared.isTimerFinished {
-            base = 60.0 // Timer done: bell left, "Done!" right
-        } else if TimerManager.shared.isTimerRunning {
-            base = 65.0
-        } else if MediaManager.shared.currentTrack.isPlaying {
-            base = 75.0
-        } else if MediaManager.shared.currentTrack.source != .none && MediaManager.shared.currentTrack.title != "No Media Playing" {
-            base = 50.0
-        } else if !DropShelfManager.shared.items.isEmpty {
-            base = 50.0
-        } else {
-            base = 56.0 // Idle ear: Apple logo left, battery % + icon right
+        switch SettingsManager.shared.closedNotchStyle {
+        case .defaultStyle:
+            if TimerManager.shared.isTimerFinished {
+                base = 65.0
+            } else if TimerManager.shared.isTimerRunning {
+                base = TimerManager.shared.remainingSeconds >= 3600 ? 78.0 : 65.0
+            } else if TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0 {
+                base = TimerManager.shared.stopwatchElapsed >= 3600 ? 82.0 : 70.0
+            } else if MediaManager.shared.currentTrack.isPlaying || (MediaManager.shared.currentTrack.source != .none && MediaManager.shared.currentTrack.title != "No Media Playing") {
+                base = 50.0 // Media: icon only left, visualizer/pause right
+            } else if !DropShelfManager.shared.items.isEmpty {
+                base = 50.0
+            } else {
+                base = 56.0 // Idle: Apple logo left, battery % right
+            }
         }
         return base + CGFloat(SettingsManager.shared.customWidthOffset) / 2.0
     }
@@ -97,15 +104,19 @@ public class AppState: ObservableObject {
             let notchW = max(170.0, detector.currentNotch.notchWidth)
             return notchW + (compactEarWidth * 2.0) + (NotchIslandShape.compactFlareWidth * 2.0)
         } else {
-            let base: CGFloat = (MediaManager.shared.currentTrack.isPlaying || TimerManager.shared.isTimerRunning) ? 260.0 : 180.0
+            let isStopwatchActive = TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0
+            let base: CGFloat = (MediaManager.shared.currentTrack.isPlaying || TimerManager.shared.isTimerRunning || isStopwatchActive) ? 260.0 : 180.0
             return base + CGFloat(settings.customWidthOffset)
         }
     }
     
     public func expandedHeight(isNotchMode: Bool, notchHeight: CGFloat) -> CGFloat {
         let notchTopInset: CGFloat = isNotchMode ? max(34.0, notchHeight) : 8.0
-        let contentH: CGFloat = 165.0
-        return notchTopInset + 38.0 + contentH + 16.0
+        switch SettingsManager.shared.openedIslandStyle {
+        case .defaultStyle:
+            let contentH: CGFloat = 170.0
+            return notchTopInset + 38.0 + contentH + 16.0
+        }
     }
     
     public func toggleExpand() {

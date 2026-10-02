@@ -26,6 +26,36 @@ public enum IslandTheme: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum ClosedNotchStyle: String, CaseIterable, Identifiable {
+    case defaultStyle = "Default"
+    
+    public var id: String { rawValue }
+
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "Default", "Option 1 (Default)", "Option 1":
+            self = .defaultStyle
+        default:
+            return nil
+        }
+    }
+}
+
+public enum OpenedIslandStyle: String, CaseIterable, Identifiable {
+    case defaultStyle = "Default"
+    
+    public var id: String { rawValue }
+
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "Default", "Option 1 (Default)", "Option 1":
+            self = .defaultStyle
+        default:
+            return nil
+        }
+    }
+}
+
 public enum SoundScheme: String, CaseIterable, Identifiable {
     case classic = "macOS Classic"
     case modern = "Modern Clicks"
@@ -49,6 +79,14 @@ public class SettingsManager: ObservableObject {
     
     @Published public var islandTheme: IslandTheme {
         didSet { defaults.set(islandTheme.rawValue, forKey: "islandTheme") }
+    }
+
+    @Published public var closedNotchStyle: ClosedNotchStyle {
+        didSet { defaults.set(closedNotchStyle.rawValue, forKey: "closedNotchStyle") }
+    }
+
+    @Published public var openedIslandStyle: OpenedIslandStyle {
+        didSet { defaults.set(openedIslandStyle.rawValue, forKey: "openedIslandStyle") }
     }
 
     /// Raw values of tabs the user wants hidden from the tab bar.
@@ -127,11 +165,15 @@ public class SettingsManager: ObservableObject {
         let savedStyle = defaults.string(forKey: "notchStyle").flatMap(NotchStyle.init) ?? .auto
         let savedTrigger = defaults.string(forKey: "expandTrigger").flatMap(ExpandTrigger.init) ?? .hoverAndClick
         let savedTheme = defaults.string(forKey: "islandTheme").flatMap(IslandTheme.init) ?? .liquidGlass
+        let savedClosedStyle = defaults.string(forKey: "closedNotchStyle").flatMap(ClosedNotchStyle.init) ?? .defaultStyle
+        let savedOpenedStyle = defaults.string(forKey: "openedIslandStyle").flatMap(OpenedIslandStyle.init) ?? .defaultStyle
         let savedScheme = defaults.string(forKey: "soundScheme").flatMap(SoundScheme.init) ?? .classic
 
         self.notchStyle = savedStyle
         self.expandTrigger = savedTrigger
         self.islandTheme = savedTheme
+        self.closedNotchStyle = savedClosedStyle
+        self.openedIslandStyle = savedOpenedStyle
         self.soundScheme = savedScheme
 
         // Restore hidden tabs (stored as array of raw-value strings)

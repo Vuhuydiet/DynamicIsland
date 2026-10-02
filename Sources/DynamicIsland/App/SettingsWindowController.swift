@@ -8,6 +8,13 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
     
     private override init() {
         super.init()
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dynamicisland.showSettings"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.show()
+        }
     }
     
     public func show() {
@@ -18,12 +25,12 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
             return
         }
         
-        let width: CGFloat = 620
-        let height: CGFloat = 460
+        let width: CGFloat = 660
+        let height: CGFloat = 620
         
         let newWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.titled, .closable, .miniaturizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )

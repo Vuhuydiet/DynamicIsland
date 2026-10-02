@@ -31,6 +31,8 @@ public class TimerManager: ObservableObject {
     private var countdownTimer: Timer?
     private var stopwatchTimer: Timer?
     private var alertRepeatTimer: Timer?
+    private var stopwatchStartDate: Date?
+    private var accumulatedStopwatchElapsed: Double = 0.0
     
     private init() {
         requestNotificationPermission()
@@ -112,6 +114,10 @@ public class TimerManager: ObservableObject {
         isTimerPaused = false
         isTimerFinished = true
         
+        DispatchQueue.main.async {
+            AppState.shared.activeTab = .timer
+        }
+        
         // Play sound immediately, repeat 2 more times for prominence
         SoundManager.shared.play(.timerAlert)
         var repeatsLeft = 2
@@ -158,25 +164,39 @@ public class TimerManager: ObservableObject {
     
     // MARK: - Stopwatch Controls
     public func startStopwatch() {
+        guard !isStopwatchRunning else { return }
         isStopwatchRunning = true
+        stopwatchStartDate = Date()
         SoundManager.shared.play(.click)
         
         stopwatchTimer?.invalidate()
-        stopwatchTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.stopwatchElapsed += 0.1
+        let t = Timer(timeInterval: 0.033, repeats: true) { [weak self] _ in
+            guard let self = self, let start = self.stopwatchStartDate else { return }
+            self.stopwatchElapsed = self.accumulatedStopwatchElapsed + Date().timeIntervalSince(start)
         }
+        RunLoop.main.add(t, forMode: .common)
+        stopwatchTimer = t
     }
     
     public func pauseStopwatch() {
+        guard isStopwatchRunning else { return }
         isStopwatchRunning = false
         stopwatchTimer?.invalidate()
+        stopwatchTimer = nil
+        if let start = stopwatchStartDate {
+            accumulatedStopwatchElapsed += Date().timeIntervalSince(start)
+            stopwatchElapsed = accumulatedStopwatchElapsed
+        }
+        stopwatchStartDate = nil
         SoundManager.shared.play(.click)
     }
     
     public func resetStopwatch() {
         stopwatchTimer?.invalidate()
+        stopwatchTimer = nil
         isStopwatchRunning = false
+        stopwatchStartDate = nil
+        accumulatedStopwatchElapsed = 0.0
         stopwatchElapsed = 0.0
         laps.removeAll()
         SoundManager.shared.play(.click)
@@ -189,16 +209,40 @@ public class TimerManager: ObservableObject {
     
     // MARK: - Formatted Strings
     public var formattedRemainingTime: String {
-        let mins = remainingSeconds / 60
+        let hours = remainingSeconds / 3600
+        let mins = (remainingSeconds % 3600) / 60
         let secs = remainingSeconds % 60
-        return String(format: "%02d:%02d", mins, secs)
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, mins, secs)
+        } else {
+            return String(format: "%02d:%02d", mins, secs)
+        }
     }
     
     public var formattedStopwatchTime: String {
-        let mins = Int(stopwatchElapsed) / 60
-        let secs = Int(stopwatchElapsed) % 60
+        let total = Int(stopwatchElapsed)
+        let hours = total / 3600
+        let mins = (total % 3600) / 60
+        let secs = total % 60
+        let hundredths = Int((stopwatchElapsed.truncatingRemainder(dividingBy: 1.0)) * 100)
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d.%02d", hours, mins, secs, hundredths)
+        } else {
+            return String(format: "%02d:%02d.%02d", mins, secs, hundredths)
+        }
+    }
+    
+    public var formattedCompactStopwatchTime: String {
+        let total = Int(stopwatchElapsed)
+        let hours = total / 3600
+        let mins = (total % 3600) / 60
+        let secs = total % 60
         let tenths = Int((stopwatchElapsed.truncatingRemainder(dividingBy: 1.0)) * 10)
-        return String(format: "%02d:%02d.%d", mins, secs, tenths)
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, mins, secs)
+        } else {
+            return String(format: "%02d:%02d.%d", mins, secs, tenths)
+        }
     }
     
     public var progress: Double {

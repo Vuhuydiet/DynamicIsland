@@ -49,7 +49,7 @@ public class DynamicIslandHostingView: NSHostingView<IslandContainerView> {
         let topY = bounds.maxY
         
         if appState.isExpanded {
-            let expandedW: CGFloat = AppState.expandedWidth
+            let expandedW: CGFloat = appState.expandedWidth
             let expandedH = appState.expandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
             let margin: CGFloat = 14.0
             
@@ -195,7 +195,7 @@ public class WindowController: ObservableObject {
             if appState.isExpanded {
                 guard !appState.isPinned else { return }
 
-                let islandW: CGFloat = AppState.expandedWidth
+                let islandW: CGFloat = appState.expandedWidth
                 let expandedH = appState.expandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
                 let islandBottom: CGFloat = screen.frame.maxY - expandedH
                 let margin: CGFloat = 14.0

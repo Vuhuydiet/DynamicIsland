@@ -96,7 +96,7 @@ public struct SettingsWindowView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 640, height: 480)
+        .frame(minWidth: 660, minHeight: 560)
     }
 }
 
@@ -124,6 +124,42 @@ public struct GeneralSettingsTab: View {
                     Text("Liquid Glass uses the system blur material. Dark is solid near-black. Light uses a bright frosted surface.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+
+            // ── UI Styles (Versions) ──────────────────────────────────────
+            GroupBox(label: Label("Island UI Versions", systemImage: "paintbrush.fill").font(.system(size: 12, weight: .semibold))) {
+                VStack(alignment: .leading, spacing: 14) {
+                    // Closed Notch Section
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Closed Notch UI")
+                            .font(.system(size: 12, weight: .semibold))
+
+                        ForEach(ClosedNotchStyle.allCases) { style in
+                            ClosedOptionPreviewCard(style: style, isSelected: settings.closedNotchStyle == style) {
+                                withAnimation(IslandSpring.bouncy) {
+                                    settings.closedNotchStyle = style
+                                }
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    // Opened Island Section
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Opened Island UI")
+                            .font(.system(size: 12, weight: .semibold))
+
+                        ForEach(OpenedIslandStyle.allCases) { style in
+                            OpenedOptionPreviewCard(style: style, isSelected: settings.openedIslandStyle == style) {
+                                withAnimation(IslandSpring.bouncy) {
+                                    settings.openedIslandStyle = style
+                                }
+                            }
+                        }
+                    }
                 }
                 .padding(8)
             }
@@ -627,3 +663,342 @@ public struct AboutSettingsTab: View {
         .frame(maxWidth: .infinity)
     }
 }
+
+// MARK: - Closed Option Preview Card (Example Display)
+public struct ClosedOptionPreviewCard: View {
+    public let style: ClosedNotchStyle
+    public let isSelected: Bool
+    public let onSelect: () -> Void
+    @State private var previewState: Int = 0 // 0: Idle, 1: Media, 2: Timer
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header Row
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                        .font(.system(size: 13))
+                    
+                    Text(style.rawValue)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.primary)
+                }
+
+                Spacer()
+
+                // State switcher to preview different live activity examples
+                HStack(spacing: 2) {
+                    ForEach([("Idle ", 0), ("Music ♫", 1), ("Timer ⏱", 2)], id: \.1) { label, idx in
+                        Button {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                previewState = idx
+                            }
+                        } label: {
+                            Text(label)
+                                .font(.system(size: 9, weight: previewState == idx ? .bold : .medium))
+                                .foregroundColor(previewState == idx ? .white : .secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule()
+                                        .fill(previewState == idx ? Color.accentColor : Color.clear)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(2)
+                .background(Capsule().fill(Color(NSColor.controlColor)))
+            }
+
+            Text("Apple-style balanced notch ears with battery, Apple logo, and dynamic live activities.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
+            // Visual Example Container
+            ZStack(alignment: .top) {
+                // Bezel / Screen edge
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(white: 0.12))
+                    .frame(height: 52)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                    )
+
+                // The Closed Notch & Ears
+                HStack(spacing: 0) {
+                    // Left Ear
+                    Group {
+                        if previewState == 0 {
+                            Image(systemName: "apple.logo")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.8))
+                        } else if previewState == 1 {
+                            HStack(spacing: 3) {
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.pink)
+                            }
+                        } else {
+                            HStack(spacing: 2) {
+                                Image(systemName: "timer")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.orange)
+                                Text("14:59")
+                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    }
+                    .frame(width: 58, height: 24, alignment: .trailing)
+                    .padding(.trailing, 6)
+
+                    // Hardware Notch Cutout
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.black)
+                            .frame(width: 68, height: 24)
+                        Circle()
+                            .fill(Color(white: 0.22))
+                            .frame(width: 6, height: 6)
+                    }
+
+                    // Right Ear
+                    Group {
+                        if previewState == 0 {
+                            HStack(spacing: 3) {
+                                Text("95%")
+                                    .font(.system(size: 8, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.85))
+                                Image(systemName: "battery.75")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.green)
+                            }
+                        } else if previewState == 1 {
+                            HStack(spacing: 1.5) {
+                                ForEach(0..<4) { i in
+                                    RoundedRectangle(cornerRadius: 1)
+                                        .fill(Color.pink)
+                                        .frame(width: 2, height: CGFloat([9, 14, 7, 11][i]))
+                                }
+                            }
+                        } else {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .stroke(Color.orange, lineWidth: 1.5)
+                                    .frame(width: 8, height: 8)
+                                Text("Timer")
+                                    .font(.system(size: 8, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                    }
+                    .frame(width: 58, height: 24, alignment: .leading)
+                    .padding(.leading, 6)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.black)
+                        .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                )
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.08) : Color(NSColor.controlColor).opacity(0.4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 1.5 : 0.5)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
+    }
+}
+
+// MARK: - Opened Option Preview Card (Example Display)
+public struct OpenedOptionPreviewCard: View {
+    public let style: OpenedIslandStyle
+    public let isSelected: Bool
+    public let onSelect: () -> Void
+    @State private var activePreviewTab: String = "Media"
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header Row
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                        .font(.system(size: 13))
+                    
+                    Text(style.rawValue)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.primary)
+                }
+
+                Spacer()
+
+                Text("Full Hub")
+                    .font(.system(size: 10, weight: .semibold))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                    .foregroundColor(.accentColor)
+            }
+
+            Text("Full multi-tab workspace with persistent header HUD, fluid sliding tab bar, and tool views.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
+            // Visual Example Container
+            VStack(spacing: 5) {
+                // Top Header Example
+                HStack {
+                    HStack(spacing: 3) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.6))
+                        Text("Dynamic Island")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                    
+                    Spacer()
+
+                    // Center camera notch indicator
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.black)
+                        .frame(width: 48, height: 10)
+                        .overlay(Circle().fill(Color(white: 0.25)).frame(width: 4, height: 4))
+
+                    Spacer()
+
+                    // Condensed stats + pin
+                    HStack(spacing: 4) {
+                        Text("CPU 12%")
+                            .font(.system(size: 7, design: .monospaced))
+                            .foregroundColor(.green)
+                        Text("RAM 8.4G")
+                            .font(.system(size: 7, design: .monospaced))
+                            .foregroundColor(.purple)
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 7))
+                            .foregroundColor(.orange)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+
+                // Divider
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 0.5)
+                    .padding(.horizontal, 10)
+
+                // Tab Bar Example
+                HStack(spacing: 3) {
+                    ForEach(["Media", "Drop Shelf", "Timer", "Clipboard", "Notes"], id: \.self) { tabName in
+                        let isActive = (activePreviewTab == tabName)
+                        Button {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                activePreviewTab = tabName
+                            }
+                        } label: {
+                            Text(tabName)
+                                .font(.system(size: 8, weight: isActive ? .bold : .regular))
+                                .foregroundColor(isActive ? .white : .white.opacity(0.5))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    Capsule()
+                                        .fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity(0.04))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 10)
+
+                // Divider
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 0.5)
+                    .padding(.horizontal, 10)
+
+                // Content View Example
+                HStack(spacing: 8) {
+                    // Mini artwork
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(
+                            LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Image(systemName: "music.note")
+                                .font(.system(size: 12))
+                                .foregroundColor(.white)
+                        )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(activePreviewTab == "Media" ? "Starboy" : activePreviewTab)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                        Text(activePreviewTab == "Media" ? "The Weeknd • Daft Punk" : "Interactive Tool Active")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+
+                    Spacer()
+
+                    // Playback controls preview
+                    HStack(spacing: 6) {
+                        Image(systemName: "backward.fill").font(.system(size: 8)).foregroundColor(.white.opacity(0.7))
+                        Image(systemName: "play.circle.fill").font(.system(size: 16)).foregroundColor(.pink)
+                        Image(systemName: "forward.fill").font(.system(size: 8)).foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.black.opacity(0.4))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+            )
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.08) : Color(NSColor.controlColor).opacity(0.4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 1.5 : 0.5)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
+    }
+}
+

@@ -25,6 +25,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         // Initialize timer manager (triggers notification permission request)
         _ = TimerManager.shared
         
+        // Initialize settings controller to observe notifications
+        _ = SettingsWindowController.shared
+        
         // Setup menu bar extra
         setupStatusItem()
     }

@@ -12,7 +12,14 @@ A native, high-performance macOS Dynamic Island built in Swift and SwiftUI. It s
 - **Flush Edge Geometry:** In notch mode, the top corner radius is set to 0 (`UnevenRoundedRectangle`) to seal flush against the screen bezel with zero gaps.
 - **Dynamic Compact Ears:** Compact mode displays live indicators on either side of the notch (now-playing animations, live ticking timer, or battery/drop counters).
 - **Floating Pill Mode:** Switchable via Preferences for external monitors, studio displays, and non-notched Macs.
-- **Full-Width Tab Bar:** 600pt expanded header with equally distributed tab pills across **Media**, **Drop Shelf**, **Timer**, **Clipboard**, and **Notes**.
+- **Full-Width Tab Bar:** 560pt expanded header with equally distributed tab pills across **Media**, **Drop Shelf**, **Timer**, **Clipboard**, and **Notes**.
+
+---
+
+### 🎨 Configurable UI/UX Versions (Closed & Opened)
+- **Independent Customization:** Select preferred UI options independently for the **Closed Notch UI** and the **Opened Island UI** in Preferences (`⌘,` → **General**).
+- **Layout Shell Scope Rule:** Opened Island UI options govern how the island is structurally organized (header arrangement, notch spacing, tab bar positioning, and animation transitions). Individual tab contents (`MediaView`, `DropShelfView`, `TimerView`, `ClipboardView`, `NotesView`) remain consistent, full-featured, and universal across all layout styles via `IslandTabContentView`.
+- **Interactive Visual Previews:** Live preview cards in Preferences showcase each option with interactive state toggles and scaled graphical representations.
 
 ---
 
@@ -132,18 +139,23 @@ dynamic-island/
     ├── Views/
     │   ├── IslandContainerView.swift # Liquid glass container, clip shapes & gestures
     │   ├── Compact/
-    │   │   ├── CompactIslandView.swift # Compact ear status view
+    │   │   ├── CompactIslandView.swift # Compact ear router & interaction handler
+    │   │   ├── ClassicCompactView.swift # Classic balanced notch ears (Default)
     │   │   └── EqualizerVisualizerView.swift # Animated waveform bars
     │   ├── Expanded/
-    │   │   ├── ExpandedIslandView.swift # Header ears, tab bar & router
+    │   │   ├── ExpandedIslandView.swift # Layout shell router
+    │   │   ├── FullHubExpandedView.swift # Full-featured multi-tab hub (Default)
+    │   │   ├── IslandTabContentView.swift # Shared universal tab content host
     │   │   ├── CondensedSystemHUDView.swift # Inline CPU/RAM/Disk/Battery HUD
     │   │   ├── MediaView.swift          # Track info, scrubber & media controls
     │   │   ├── DropShelfView.swift      # Parked file grid & actions
     │   │   ├── TimerView.swift          # Custom time steppers & stopwatch
     │   │   ├── ClipboardView.swift      # Clipboard history list
     │   │   ├── NotesView.swift          # Scratchpad editor
-    │   │   └── SettingsWindowView.swift # Preferences views
+    │   │   └── SettingsWindowView.swift # Preferences views & interactive previews
     │   └── Components/
+    │       ├── NotchIslandShape.swift   # Tangent continuous flaring corner bezier
+    │       ├── IslandAnimations.swift   # Apple-calibrated spring physics curves
     │       ├── CustomSliders.swift      # Sliders and controls
     │       └── PillBadge.swift          # Compact status badges
     └── main.swift                  # Application entry point

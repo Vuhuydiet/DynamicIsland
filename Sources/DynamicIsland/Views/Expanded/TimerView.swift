@@ -70,6 +70,28 @@ private struct CountdownView: View {
 
     private var isIdle: Bool { !timer.isTimerRunning && !timer.isTimerPaused && !timer.isTimerFinished }
 
+    private var hasHours: Bool {
+        if isIdle {
+            return inputHours > 0
+        }
+        return timer.remainingSeconds >= 3600
+    }
+
+    private var displayedRemainingTime: String {
+        if isIdle {
+            let total = inputHours * 3600 + inputMinutes * 60 + inputSeconds
+            let m = (total % 3600) / 60
+            let s = total % 60
+            let h = total / 3600
+            if h > 0 {
+                return String(format: "%d:%02d:%02d", h, m, s)
+            } else {
+                return String(format: "%02d:%02d", m, s)
+            }
+        }
+        return timer.formattedRemainingTime
+    }
+
     public var body: some View {
         Group {
             if timer.isTimerFinished {
@@ -199,9 +221,12 @@ private struct CountdownView: View {
                     .animation(.linear(duration: 0.5), value: timer.progress)
 
                 VStack(spacing: 1) {
-                    Text(timer.formattedRemainingTime)
-                        .font(IslandFont.heroNumeric)
+                    Text(displayedRemainingTime)
+                        .font(hasHours ? .system(size: 15, weight: .bold, design: .monospaced) : IslandFont.heroNumeric)
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: 72)
                     Text(timer.isTimerRunning ? "RUNNING" : (timer.isTimerPaused ? "PAUSED" : "READY"))
                         .font(IslandFont.micro)
                         .foregroundColor(.white.opacity(0.4))
@@ -303,7 +328,7 @@ private struct CountdownView: View {
     }
 }
 
-// MARK: - Time Unit Stepper (up/down arrows + scroll wheel)
+// MARK: - Time Unit Stepper (up/down arrows + scroll wheel + drag)
 private struct TimeUnitStepper: View {
     let label: String
     @Binding var value: Int
@@ -312,15 +337,15 @@ private struct TimeUnitStepper: View {
     var body: some View {
         VStack(spacing: 1) {
             // Up arrow
-            Button { increment() } label: {
+            Button { step(by: 1) } label: {
                 Image(systemName: "chevron.up")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundColor(.white.opacity(0.5))
-                    .frame(width: 28, height: 10)
+                    .frame(width: 30, height: 10)
             }
             .buttonStyle(.plain)
 
-            // Value + label
+            // Value + label with Scroll Wheel & Drag Capture
             VStack(spacing: 0) {
                 Text(String(format: "%02d", value))
                     .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
@@ -329,101 +354,120 @@ private struct TimeUnitStepper: View {
                     .font(.system(size: 7, weight: .medium))
                     .foregroundColor(.white.opacity(0.35))
             }
-            .frame(width: 28)
+            .frame(width: 30)
             .padding(.vertical, 3)
             .background(Color.white.opacity(0.07))
             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(
+                ScrollWheelCapture { delta in
+                    step(by: delta)
+                }
+            )
 
             // Down arrow
-            Button { decrement() } label: {
+            Button { step(by: -1) } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundColor(.white.opacity(0.5))
-                    .frame(width: 28, height: 10)
+                    .frame(width: 30, height: 10)
             }
             .buttonStyle(.plain)
         }
-        // Attach scroll monitor to the whole stepper area
-        .overlay(
-            ScrollWheelCapture { delta in
-                if delta < 0 { increment() } else { decrement() }
-            }
-            .allowsHitTesting(false) // let clicks fall through to buttons
-        )
     }
 
-    private func increment() {
-        value = value < range.upperBound ? value + 1 : range.lowerBound
-    }
-    private func decrement() {
-        value = value > range.lowerBound ? value - 1 : range.upperBound
+    private func step(by delta: Int) {
+        let count = range.upperBound - range.lowerBound + 1
+        var offset = (value - range.lowerBound + delta) % count
+        if offset < 0 {
+            offset += count
+        }
+        value = range.lowerBound + offset
     }
 }
 
-// MARK: - Scroll Wheel Capture (NSViewRepresentable)
-/// Transparent overlay that installs an NSEvent local monitor while the mouse
-/// hovers over it. Local monitors fire on scroll regardless of hit-test order.
+// MARK: - Scroll Wheel & Drag Capture (NSViewRepresentable)
+/// An interactive NSView that captures scroll wheel (mouse wheel & trackpad swipes)
+/// and vertical mouse dragging to scroll numbers naturally.
 private struct ScrollWheelCapture: NSViewRepresentable {
-    let onScroll: (CGFloat) -> Void
+    let onStep: (Int) -> Void
 
     func makeNSView(context: Context) -> _ScrollWheelView {
         let v = _ScrollWheelView()
-        v.onScroll = onScroll
+        v.onStep = onStep
         return v
     }
 
     func updateNSView(_ nsView: _ScrollWheelView, context: Context) {
-        nsView.onScroll = onScroll
+        nsView.onStep = onStep
     }
 }
 
 final class _ScrollWheelView: NSView {
-    var onScroll: ((CGFloat) -> Void)?
-    private var monitor: Any?
+    var onStep: ((Int) -> Void)?
+    private var accumulatedDelta: CGFloat = 0.0
+    private var dragStartY: CGFloat = 0.0
+    private var accumulatedDrag: CGFloat = 0.0
 
-    // Tracking area fires mouseEntered/Exited even for non-hit-test views
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach { removeTrackingArea($0) }
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        ))
-    }
+    override var isOpaque: Bool { false }
 
-    override func mouseEntered(with event: NSEvent) {
-        guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] ev in
-            guard let self else { return ev }
-            // Only act when the cursor is actually inside our bounds
-            if let win = self.window {
-                let loc = self.convert(ev.locationInWindow, from: nil)
-                if self.bounds.contains(loc) {
-                    let dy = ev.scrollingDeltaY
-                    if abs(dy) > 0.3 {
-                        DispatchQueue.main.async { self.onScroll?(dy) }
-                    }
+    override func scrollWheel(with event: NSEvent) {
+        // Ignore inertia/momentum coasting so values don't spin uncontrollably when lifting fingers
+        guard event.momentumPhase.isEmpty else { return }
+
+        // Reset accumulation at gesture boundaries
+        if event.phase == .began || event.phase == .ended || event.phase == .cancelled {
+            accumulatedDelta = 0.0
+        }
+
+        let dy = event.scrollingDeltaY
+        let inverted = event.isDirectionInvertedFromDevice
+        // Natural scrolling has inverted deltas; flip so positive always means upward gesture
+        let effectiveDy = inverted ? -dy : dy
+
+        if event.hasPreciseScrollingDeltas {
+            accumulatedDelta += effectiveDy
+            // Calm, controllable trackpad swipe threshold (24pt swipe = 1 unit change)
+            let threshold: CGFloat = 24.0
+            if abs(accumulatedDelta) >= threshold {
+                let steps = Int(accumulatedDelta / threshold)
+                accumulatedDelta -= CGFloat(steps) * threshold
+                DispatchQueue.main.async { [weak self] in
+                    self?.onStep?(steps)
                 }
             }
-            return ev // don't consume — let the panel scroll if needed
+        } else {
+            // Traditional stepped mouse wheel (1 notch = 1 step)
+            accumulatedDelta += effectiveDy
+            if abs(accumulatedDelta) >= 1.0 {
+                let steps = accumulatedDelta > 0 ? 1 : -1
+                accumulatedDelta = 0.0
+                DispatchQueue.main.async { [weak self] in
+                    self?.onStep?(steps)
+                }
+            }
         }
     }
 
-    override func mouseExited(with event: NSEvent) {
-        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+    override func mouseDown(with event: NSEvent) {
+        dragStartY = event.locationInWindow.y
+        accumulatedDrag = 0.0
     }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window == nil, let m = monitor {
-            NSEvent.removeMonitor(m); monitor = nil
+    override func mouseDragged(with event: NSEvent) {
+        let currentY = event.locationInWindow.y
+        let dy = currentY - dragStartY
+        dragStartY = currentY
+        accumulatedDrag += dy
+
+        // Dragging upward in window coordinates increases value (22pt drag = 1 step)
+        let threshold: CGFloat = 22.0
+        if abs(accumulatedDrag) >= threshold {
+            let steps = Int(accumulatedDrag / threshold)
+            accumulatedDrag -= CGFloat(steps) * threshold
+            DispatchQueue.main.async { [weak self] in
+                self?.onStep?(steps)
+            }
         }
-    }
-
-    deinit {
-        if let m = monitor { NSEvent.removeMonitor(m) }
     }
 }
 
@@ -431,109 +475,399 @@ final class _ScrollWheelView: NSView {
 private struct StopwatchView: View {
     @ObservedObject var timer = TimerManager.shared
 
+    private var isRunning: Bool { timer.isStopwatchRunning }
+    private var isIdle: Bool { !timer.isStopwatchRunning && timer.stopwatchElapsed == 0.0 }
+    private var isPaused: Bool { !timer.isStopwatchRunning && timer.stopwatchElapsed > 0.0 }
+
+    private var timeComponents: (main: String, hundredths: String) {
+        let total = Int(timer.stopwatchElapsed)
+        let hours = total / 3600
+        let mins = (total % 3600) / 60
+        let secs = total % 60
+        let hundredths = Int((timer.stopwatchElapsed.truncatingRemainder(dividingBy: 1.0)) * 100)
+        let mainStr = hours > 0
+            ? String(format: "%d:%02d:%02d", hours, mins, secs)
+            : String(format: "%02d:%02d", mins, secs)
+        return (mainStr, String(format: ".%02d", hundredths))
+    }
+
+    private var fastestLapIndex: Int? {
+        guard timer.laps.count >= 2 else { return nil }
+        var bestIdx = 0
+        var bestDuration = Double.greatestFiniteMagnitude
+        for idx in 0..<timer.laps.count {
+            let prev = idx + 1 < timer.laps.count ? timer.laps[idx + 1] : 0.0
+            let split = timer.laps[idx] - prev
+            if split < bestDuration {
+                bestDuration = split
+                bestIdx = idx
+            }
+        }
+        return bestIdx
+    }
+
+    private var slowestLapIndex: Int? {
+        guard timer.laps.count >= 2 else { return nil }
+        var worstIdx = 0
+        var worstDuration = -1.0
+        for idx in 0..<timer.laps.count {
+            let prev = idx + 1 < timer.laps.count ? timer.laps[idx + 1] : 0.0
+            let split = timer.laps[idx] - prev
+            if split > worstDuration {
+                worstDuration = split
+                worstIdx = idx
+            }
+        }
+        return worstIdx != fastestLapIndex ? worstIdx : nil
+    }
+
+    private var fastestLapDuration: Double {
+        guard let idx = fastestLapIndex else { return 0.0 }
+        let prev = idx + 1 < timer.laps.count ? timer.laps[idx + 1] : 0.0
+        return timer.laps[idx] - prev
+    }
+
+    private var currentLapSplit: Double {
+        let prev = timer.laps.first ?? 0.0
+        return max(0.0, timer.stopwatchElapsed - prev)
+    }
+
     var body: some View {
-        HStack(spacing: 20) {
+        Group {
+            if timer.laps.isEmpty {
+                spaciousSingleColumnView
+            } else {
+                fullTwoColumnView
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(IslandSpring.tabSlide, value: timer.laps.isEmpty)
+    }
+
+    // MARK: - State 1: Spacious Hero View (No Laps)
+    private var spaciousSingleColumnView: some View {
+        VStack(spacing: 8) {
             Spacer(minLength: 0)
 
-            // ── Left: time + controls centered together ───────────────
-            VStack(alignment: .center, spacing: 8) {
-                Text(timer.formattedStopwatchTime)
-                    .font(IslandFont.heroNumeric)
-                    .foregroundColor(.white)
-                    .monospacedDigit()
+            // Status chip
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(isRunning ? Color.green : (isPaused ? Color.yellow : Color.white.opacity(0.3)))
+                    .frame(width: 6, height: 6)
+                Text(isRunning ? "RUNNING" : (isPaused ? "PAUSED" : "STOPWATCH"))
+                    .font(IslandFont.micro)
+                    .foregroundColor(isRunning ? .green : (isPaused ? .yellow : .white.opacity(0.45)))
+                    .tracking(1.0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(Color.white.opacity(0.05))
+            .clipShape(Capsule())
 
-                HStack(spacing: 6) {
-                    // Start / Pause
+            // Hero Digital Readout
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text(timeComponents.main)
+                    .font(.system(size: 42, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundColor(.white)
+                Text(timeComponents.hundredths)
+                    .font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundColor(.white.opacity(0.60))
+            }
+
+            // Buttons
+            HStack(spacing: 12) {
+                if isRunning {
+                    // Lap Button
                     Button {
-                        timer.isStopwatchRunning ? timer.pauseStopwatch() : timer.startStopwatch()
+                        withAnimation(IslandSpring.bouncy) {
+                            timer.addLap()
+                        }
                     } label: {
-                        Label(
-                            timer.isStopwatchRunning ? "Pause" : "Start",
-                            systemImage: timer.isStopwatchRunning ? "pause.fill" : "play.fill"
-                        )
-                        .font(IslandFont.caption)
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 5)
-                        .background(timer.isStopwatchRunning ? Color.yellow : Color.green)
-                        .clipShape(Capsule())
+                        Label("Lap", systemImage: "flag.fill")
+                            .font(IslandFont.caption)
+                            .foregroundColor(.white)
+                            .frame(width: 95, height: 28)
+                            .background(Color.white.opacity(0.14))
+                            .clipShape(Capsule())
                     }
                     .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
 
-                    // Lap (only while running)
-                    if timer.isStopwatchRunning {
-                        Button {
-                            withAnimation(IslandSpring.bouncy) {
-                                timer.addLap()
-                            }
-                        } label: {
-                            Text("Lap")
-                                .font(IslandFont.caption)
-                                .foregroundColor(.white.opacity(0.85))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 5)
-                                .background(Color.white.opacity(0.13))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+                    // Pause Button
+                    Button {
+                        timer.pauseStopwatch()
+                    } label: {
+                        Label("Pause", systemImage: "pause.fill")
+                            .font(IslandFont.caption)
+                            .foregroundColor(.black)
+                            .frame(width: 95, height: 28)
+                            .background(Color.yellow)
+                            .clipShape(Capsule())
                     }
-
-                    // Reset
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+                } else if isPaused {
+                    // Reset Button
                     Button {
                         withAnimation(IslandSpring.bouncy) {
                             timer.resetStopwatch()
                         }
                     } label: {
-                        Text("Reset")
+                        Label("Reset", systemImage: "arrow.counterclockwise")
                             .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(Color.white.opacity(0.07))
+                            .foregroundColor(.white.opacity(0.85))
+                            .frame(width: 95, height: 28)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+
+                    // Resume Button
+                    Button {
+                        timer.startStopwatch()
+                    } label: {
+                        Label("Resume", systemImage: "play.fill")
+                            .font(IslandFont.caption)
+                            .foregroundColor(.black)
+                            .frame(width: 95, height: 28)
+                            .background(Color.green)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+                } else {
+                    // Start Button
+                    Button {
+                        timer.startStopwatch()
+                    } label: {
+                        Label("Start", systemImage: "play.fill")
+                            .font(IslandFont.caption)
+                            .foregroundColor(.black)
+                            .frame(width: 130, height: 30)
+                            .background(Color.green)
                             .clipShape(Capsule())
                     }
                     .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
                 }
             }
 
-            // ── Right: laps list ──────────────────────────────────────
-            if !timer.laps.isEmpty {
-                Divider()
-                    .background(Color.white.opacity(0.12))
-                    .frame(height: 60)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 14)
+    }
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .trailing, spacing: 3) {
-                        ForEach(Array(timer.laps.enumerated()), id: \.offset) { idx, lap in
-                            HStack(spacing: 6) {
-                                Text("Lap \(timer.laps.count - idx)")
-                                    .foregroundColor(.white.opacity(0.38))
-                                Text(formatLap(lap))
-                                    .foregroundColor(.white.opacity(0.85))
-                                    .monospacedDigit()
+    // MARK: - State 2: Full Two-Column View (With Laps)
+    private var fullTwoColumnView: some View {
+        HStack(spacing: 16) {
+            // ── Left Column: Time & Controls ──────────────────────────────
+            VStack(alignment: .leading, spacing: 6) {
+                Spacer(minLength: 0)
+
+                // Status chip
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(isRunning ? Color.green : Color.yellow)
+                        .frame(width: 5, height: 5)
+                    Text(isRunning ? "RUNNING" : "PAUSED")
+                        .font(IslandFont.micro)
+                        .foregroundColor(isRunning ? .green : .yellow)
+                        .tracking(0.8)
+                }
+
+                // Current Total Time
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Text(timeComponents.main)
+                        .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundColor(.white)
+                    Text(timeComponents.hundredths)
+                        .font(.system(size: 18, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundColor(.white.opacity(0.60))
+                }
+
+                // In-progress Lap Split
+                HStack(spacing: 4) {
+                    Text("Lap \(timer.laps.count + 1):")
+                        .font(IslandFont.micro)
+                        .foregroundColor(.white.opacity(0.40))
+                    Text(formatTime(currentLapSplit))
+                        .font(IslandFont.caption)
+                        .foregroundColor(.white.opacity(0.75))
+                        .monospacedDigit()
+                }
+
+                // Action Buttons
+                HStack(spacing: 8) {
+                    if isRunning {
+                        Button {
+                            withAnimation(IslandSpring.bouncy) {
+                                timer.addLap()
                             }
-                            .font(IslandFont.timeNumeric)
+                        } label: {
+                            Label("Lap", systemImage: "flag.fill")
+                                .font(IslandFont.caption)
+                                .foregroundColor(.white)
+                                .frame(width: 82, height: 28)
+                                .background(Color.white.opacity(0.14))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+
+                        Button {
+                            timer.pauseStopwatch()
+                        } label: {
+                            Label("Pause", systemImage: "pause.fill")
+                                .font(IslandFont.caption)
+                                .foregroundColor(.black)
+                                .frame(width: 82, height: 28)
+                                .background(Color.yellow)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+                    } else {
+                        Button {
+                            withAnimation(IslandSpring.bouncy) {
+                                timer.resetStopwatch()
+                            }
+                        } label: {
+                            Label("Reset", systemImage: "arrow.counterclockwise")
+                                .font(IslandFont.caption)
+                                .foregroundColor(.white.opacity(0.85))
+                                .frame(width: 82, height: 28)
+                                .background(Color.white.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+
+                        Button {
+                            timer.startStopwatch()
+                        } label: {
+                            Label("Resume", systemImage: "play.fill")
+                                .font(IslandFont.caption)
+                                .foregroundColor(.black)
+                                .frame(width: 82, height: 28)
+                                .background(Color.green)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.92))
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(width: 185)
+
+            // ── Glass Divider ─────────────────────────────────────────────
+            Rectangle()
+                .fill(Color.white.opacity(0.10))
+                .frame(width: 0.5, height: 110)
+
+            // ── Right Column: Full Laps Table ─────────────────────────────
+            VStack(alignment: .leading, spacing: 3) {
+                // Table Header
+                HStack {
+                    Text("LAP")
+                        .frame(width: 55, alignment: .leading)
+                    Spacer()
+                    Text("SPLIT")
+                        .frame(width: 80, alignment: .trailing)
+                    Spacer()
+                    Text("TOTAL")
+                        .frame(width: 80, alignment: .trailing)
+                }
+                .font(IslandFont.micro)
+                .foregroundColor(.white.opacity(0.40))
+                .padding(.horizontal, 6)
+                .padding(.bottom, 2)
+
+                // Scrollable Lap Rows (Uses entire available height)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 2) {
+                        ForEach(Array(timer.laps.enumerated()), id: \.offset) { idx, cumulative in
+                            let lapNum = timer.laps.count - idx
+                            let prev = idx + 1 < timer.laps.count ? timer.laps[idx + 1] : 0.0
+                            let split = cumulative - prev
+                            let isFastest = (idx == fastestLapIndex)
+                            let isSlowest = (idx == slowestLapIndex)
+                            let color: Color = isFastest ? .green : (isSlowest ? .red : .white.opacity(0.88))
+
+                            HStack {
+                                HStack(spacing: 3) {
+                                    Text("Lap \(lapNum)")
+                                        .foregroundColor(color)
+                                    if isFastest {
+                                        Image(systemName: "bolt.fill")
+                                            .font(.system(size: 7))
+                                            .foregroundColor(.green)
+                                    } else if isSlowest {
+                                        Image(systemName: "tortoise.fill")
+                                            .font(.system(size: 7))
+                                            .foregroundColor(.red.opacity(0.8))
+                                    }
+                                }
+                                .frame(width: 55, alignment: .leading)
+
+                                Spacer()
+
+                                Text(formatTime(split))
+                                    .foregroundColor(color)
+                                    .monospacedDigit()
+                                    .frame(width: 80, alignment: .trailing)
+
+                                Spacer()
+
+                                Text(formatTime(cumulative))
+                                    .foregroundColor(.white.opacity(0.60))
+                                    .monospacedDigit()
+                                    .frame(width: 80, alignment: .trailing)
+                            }
+                            .font(IslandFont.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(isFastest ? Color.green.opacity(0.10) : (isSlowest ? Color.red.opacity(0.08) : Color.white.opacity(0.03)))
+                            )
                             .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                         }
                     }
                 }
-                .frame(width: 110, height: 68)
-                .animation(IslandSpring.bouncy, value: timer.laps.count)
-            }
+                .frame(maxHeight: 88)
 
-            Spacer(minLength: 0)
+                // Footer Summary
+                HStack {
+                    Text("\(timer.laps.count) \(timer.laps.count == 1 ? "lap" : "laps")")
+                        .font(IslandFont.micro)
+                        .foregroundColor(.white.opacity(0.35))
+
+                    Spacer()
+
+                    if fastestLapIndex != nil {
+                        HStack(spacing: 3) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 7))
+                            Text("Best: \(formatTime(fastestLapDuration))")
+                        }
+                        .font(IslandFont.micro)
+                        .foregroundColor(.green.opacity(0.85))
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.top, 2)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 10)
     }
 
-    private func formatLap(_ t: Double) -> String {
-        let m = Int(t) / 60
-        let s = Int(t) % 60
+    private func formatTime(_ t: Double) -> String {
+        let total = Int(t)
+        let hours = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
         let ms = Int((t.truncatingRemainder(dividingBy: 1.0)) * 100)
-        return m > 0
-            ? String(format: "%d:%02d.%02d", m, s, ms)
-            : String(format: "%02d.%02d", s, ms)
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d.%02d", hours, m, s, ms)
+        } else {
+            return String(format: "%02d:%02d.%02d", m, s, ms)
+        }
     }
 }
 

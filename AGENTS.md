@@ -159,6 +159,37 @@ Production code must strictly reflect real media sessions. Demo player mocks, ti
   - Active tab indicators in both main navigation and timer mode use `@Namespace` and `.matchedGeometryEffect` to glide fluidly across pills.
   - View contents use asymmetric transitions with subtle vertical glide and opacity to eliminate flicker or clipping.
 
+### 7. UI & UX Versions Architecture
+
+The application provides independent customization of the **Closed Notch UI** and the **Opened Island UI** via Preferences (**General → Island UI Versions**).
+
+#### A. Opened Island UI Scope Rule
+> [!IMPORTANT]
+> **Opened Island UI Options Scope**:
+> Opened Island UI options define **structural container layout, header/notch organization, tab navigation architecture, and transitions ONLY**:
+> 1. **Header organization**: Arrangement and sizing of the hardware notch spacer cutout, title/branding placement, system HUD telemetry styling and order, and pin button position.
+> 2. **Tab bar & navigation architecture**: Placement and visual styling of tabs (e.g., top sliding pill bar, bottom dock, segmented controls, floating chips, or side rails) and active indicator glide physics.
+> 3. **Shell framing & transitions**: Overall island width, corner radii, dividers, background blur, and expand/collapse spring curves.
+>
+> **Universal Tab Content Rule (Never Duplicate or Modify Tab Contents Per Style)**:
+> Individual tool views (`MediaView`, `DropShelfView`, `TimerView`, `ClipboardView`, `NotesView`) are universal system tools and remain identical across all layout options. Every opened island style MUST embed [`IslandTabContentView.swift`](file:///Users/vuhuydiet/dev/dynamic-island/Sources/DynamicIsland/Views/Expanded/IslandTabContentView.swift) into its designated content viewport. Never duplicate tab content logic or customize tool views per layout shell.
+
+#### B. Closed Notch UI Scope Rule
+Closed Notch UI options dictate how the compact notch ears display information when idle or during live activities (e.g., standard Apple-style balanced ears, ultra-minimal, or ticker/badge styles). They route through [`CompactIslandView.swift`](file:///Users/vuhuydiet/dev/dynamic-island/Sources/DynamicIsland/Views/Compact/CompactIslandView.swift).
+
+#### C. Styles, Enums & Settings Mapping
+- **Closed Notch Styles (`ClosedNotchStyle`)**:
+  - `defaultStyle` ("Default"): The original Apple-style balanced ears with battery percentage, Apple logo, and dynamic live activities (`ClassicCompactView.swift`).
+  - Routed dynamically via `CompactIslandView.swift`.
+- **Opened Island Styles (`OpenedIslandStyle`)**:
+  - `defaultStyle` ("Default"): The complete multi-tab workspace with top header HUD, full-width sliding pill bar, and centered tool content (`FullHubExpandedView.swift`).
+  - Routed dynamically via `ExpandedIslandView.swift`.
+- **Option Naming**:
+  - Option names displayed to users must be clean and descriptive (e.g. `"Default"`), never prefixed with arbitrary numbers like `"Option 1"`.
+- **Settings Switchability & Previews**:
+  - Configured independently via `SettingsManager.shared.closedNotchStyle` and `SettingsManager.shared.openedIslandStyle`, persisted to `UserDefaults`.
+  - Displayed in **General Preferences** with live interactive example cards (`ClosedOptionPreviewCard`, `OpenedOptionPreviewCard`) featuring live state toggles and scaled UI visual previews.
+
 ---
 
 ## 🔄 State & Singletons Map
