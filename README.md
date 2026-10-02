@@ -4,35 +4,52 @@ A native, high-performance macOS Dynamic Island built in Swift and SwiftUI. It s
 
 ---
 
-## ✨ Features
+## 📑 Table of Contents
+1. [✨ Features & Subsystems](#-features--subsystems)
+   - [Adaptive Notch & Liquid Glass Design](#-adaptive-notch--liquid-glass-design)
+   - [Configurable UI/UX Versions](#-configurable-uiux-versions)
+   - [Universal Media & Video Player Hub](#-universal-media--video-player-hub)
+   - [File Drop Shelf (Drag-to-Notch)](#-file-drop-shelf-drag-to-notch)
+   - [Timers & Centered Stopwatch](#️-timers--centered-stopwatch)
+   - [Clipboard History & Quick Notes](#-clipboard-history--quick-notes)
+   - [Condensed System HUD](#-condensed-system-hud)
+   - [Preferences & Customization](#️-preferences--customization)
+2. [⌨️ Shortcuts & Gestures](#️-shortcuts--gestures)
+3. [🛠️ Building & Running](#️-building--running)
+4. [📂 Project Structure](#-project-structure)
+5. [📄 License](#-license)
+
+---
+
+## ✨ Features & Subsystems
 
 ### 🏝️ Adaptive Notch & Liquid Glass Design
 - **Physical Notch Detection:** Automatically measures hardware notch dimensions and safe area insets on 14" & 16" MacBook Pros and MacBook Airs.
 - **Liquid Glass Materials:** Layered translucent frosted glass (`NSVisualEffectView` HUD material) with specular top highlights, subtle gradient sheen, and continuous curve clipping.
-- **Flush Edge Geometry:** In notch mode, the top corner radius is set to 0 (`UnevenRoundedRectangle`) to seal flush against the screen bezel with zero gaps.
+- **Flush Edge Geometry:** In notch mode, top corner radii flaring into the screen bezel are mathematically continuous with zero gaps (`NotchIslandShape`).
 - **Dynamic Compact Ears:** Compact mode displays live indicators on either side of the notch (now-playing animations, live ticking timer, or battery/drop counters).
 - **Floating Pill Mode:** Switchable via Preferences for external monitors, studio displays, and non-notched Macs.
 - **Full-Width Tab Bar:** 560pt expanded header with equally distributed tab pills across **Media**, **Drop Shelf**, **Timer**, **Clipboard**, and **Notes**.
 
 ---
 
-### 🎨 Configurable UI/UX Versions (Closed & Opened)
-- **Independent Customization:** Select preferred UI options independently for the **Closed Notch UI** and the **Opened Island UI** in Preferences (`⌘,` → **General**).
-- **Layout Shell Scope Rule:** Opened Island UI options govern how the island is structurally organized (header arrangement, notch spacing, tab bar positioning, and animation transitions). Individual tab contents (`MediaView`, `DropShelfView`, `TimerView`, `ClipboardView`, `NotesView`) remain consistent, full-featured, and universal across all layout styles via `IslandTabContentView`.
+### 🎨 Configurable UI/UX Versions
+- **Independent Customization:** Choose preferred UI options independently for the **Closed Notch UI** and the **Opened Island UI** in Preferences (`⌘,` → **General**).
+- **Layout Shell Scope Rule:** Opened Island UI options govern how the island is structurally organized (header arrangement, notch spacing, tab bar positioning, and animation transitions).
+- **Universal Tab Content:** Individual tool views (`MediaView`, `DropShelfView`, `TimerView`, `ClipboardView`, `NotesView`) remain consistent, full-featured, and universal across all layout styles via `IslandTabContentView`.
 - **Interactive Visual Previews:** Live preview cards in Preferences showcase each option with interactive state toggles and scaled graphical representations.
 
 ---
 
 ### 🎵 Universal Media & Video Player Hub
-- **Universal NowPlaying Detection:** Uses Apple's private `MediaRemote.framework` (`MRMediaRemoteGetNowPlayingInfo`) to inspect media playback across all system apps.
+- **Universal NowPlaying Detection:** Dynamically links Apple's private `MediaRemote.framework` (`MRMediaRemoteGetNowPlayingInfo`) to inspect media playback across all system apps.
 - **Multi-Source Support:**
   - 🎬 **Browsers & Web Video:** YouTube, Netflix, Twitch, Vimeo across Google Chrome, Safari, Brave, Arc, and Edge.
   - 📺 **Local Players:** QuickTime Player, VLC Media Player, and IINA.
   - 🎧 **Music Apps:** Apple Music, Spotify, Podcasts, and Tidal.
 - **Real-Time Playback Controls:** Fully functional Previous Track (`<<`), Play/Pause (`||` / `▶`), and Next Track (`>>`) powered by native `MRMediaRemoteSendCommand` with AppleScript and system key fallbacks.
 - **Interactive Scrubber:** Drag smoothly to seek position on supported media.
-- **Dynamic Accent Theming & Artwork:** Dynamic artwork previews and source-specific brand colors.
-- **Equalizer Spectrum:** Bouncing multi-bar audio visualizer that syncs to playback state.
+- **Equalizer Spectrum:** Bouncing multi-bar audio visualizer that syncs to active audio output via CoreAudio.
 
 ---
 
@@ -44,20 +61,11 @@ A native, high-performance macOS Dynamic Island built in Swift and SwiftUI. It s
 
 ---
 
-### ⚡ Condensed System HUD
-The header ear hosts a real-time system telemetry readout:
-1. ⚙️ **CPU:** Instantaneous usage percentage with load-adaptive coloring.
-2. 💾 **RAM:** Used memory in gigabytes (e.g. `14.2G`).
-3. 💽 **Disk:** Root volume used space (e.g. `245G`).
-4. 🔋 **Battery:** Real-time percentage with live charging bolt (`⚡ 98%`).
-
----
-
 ### ⏱️ Timers & Centered Stopwatch
-- **Custom Time Input:** Intuitive H / M / S steppers with up/down arrows to set custom countdown durations.
+- **Custom Time Input:** Intuitive H / M / S steppers with up/down chevrons to set custom countdown durations.
 - **Quick Presets:** Instant access to 1m, 5m, 15m, and 🍅 25m Pomodoro intervals.
 - **Live Activity Ear:** Countdown ticks live in the compact notch ear (`⏳ 04:32`) even when collapsed.
-- **Centered Stopwatch:** Centered millisecond stopwatch with lap recording and scrollable lap history.
+- **Centered Stopwatch:** Centered millisecond stopwatch with split lap calculation (`Lap`, `Split`, `Total`), fastest lap green bolt (`⚡`) highlight, and slowest lap red tortoise (`🐢`) highlight.
 - **Audio Alerts & Notifications:** Tactile sound effects and UserNotifications on completion.
 
 ---
@@ -68,7 +76,15 @@ The header ear hosts a real-time system telemetry readout:
 
 ---
 
-### ⚙️ Preferences & Shortcuts
+### ⚡ Condensed System HUD
+The header ear hosts a real-time system telemetry readout updated every 2 seconds:
+1. ⚙️ **CPU:** Instantaneous usage percentage with load-adaptive coloring.
+2. 💾 **RAM:** Used memory in gigabytes (e.g. `14.2G`).
+3. 💽 **Disk:** Root volume used space (e.g. `245G`).
+
+---
+
+### ⚙️ Preferences & Customization
 - **Open Preferences:** Click the **Dynamic Island** title in the header ear, press `⌘,`, or select Preferences from the menu bar.
 - **Pin Island Open:** Pin button (`📌`) keeps the island expanded regardless of mouse movement.
 - **Real-Time Menu Bar Icon:** Toggle the menu bar icon on or off live in Preferences.
@@ -103,7 +119,7 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools ./scripts/build_app.sh
 
 ### Launch
 ```bash
-open DynamicIsland.app
+open /Applications/DynamicIsland.app
 ```
 
 ---
@@ -146,7 +162,7 @@ dynamic-island/
     │   │   ├── ExpandedIslandView.swift # Layout shell router
     │   │   ├── FullHubExpandedView.swift # Full-featured multi-tab hub (Default)
     │   │   ├── IslandTabContentView.swift # Shared universal tab content host
-    │   │   ├── CondensedSystemHUDView.swift # Inline CPU/RAM/Disk/Battery HUD
+    │   │   ├── CondensedSystemHUDView.swift # Inline CPU/RAM/Disk HUD
     │   │   ├── MediaView.swift          # Track info, scrubber & media controls
     │   │   ├── DropShelfView.swift      # Parked file grid & actions
     │   │   ├── TimerView.swift          # Custom time steppers & stopwatch
