@@ -8,7 +8,9 @@ public struct IslandContainerView: View {
     @ObservedObject var mediaManager = MediaManager.shared
     @ObservedObject var timerManager = TimerManager.shared
     
-    @State private var isTargetedForDrop = false
+    @State private var isTopHoveringDrag = false
+    @State private var isTrayDropTargeted = false
+    @State private var dragExitWorkItem: DispatchWorkItem? = nil
     
     private var isNotchMode: Bool {
         switch settings.notchStyle {
@@ -37,9 +39,19 @@ public struct IslandContainerView: View {
     // Dynamic width calculation
     private var islandWidth: CGFloat {
         if appState.isExpanded {
-            return AppState.expandedWidth
+            return appState.expandedWidth
         } else {
             return appState.compactIslandWidth
+        }
+    }
+
+    /// The visible body width between the straight vertical side edges,
+    /// excluding the top corner flares that expand outward into the screen bezel.
+    private var islandBodyWidth: CGFloat {
+        if isNotchMode {
+            return max(240.0, islandWidth - (currentFlareWidth * 2.0))
+        } else {
+            return islandWidth
         }
     }
     
@@ -86,7 +98,7 @@ public struct IslandContainerView: View {
     }
     
     public var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // Main Island Body: ZStack strictly aligned to top
             ZStack(alignment: .top) {
                 // ── Continuous Background — theme-aware, cross-faded ─────────
@@ -154,7 +166,10 @@ public struct IslandContainerView: View {
                                     ? Color.black.opacity(appState.isExpanded ? 0.04 : 0.0)
                                     : Color.white.opacity(appState.isExpanded ? 0.08 : 0.0)
                                 ), location: 0.35),
-                                .init(color: Color.clear, location: 1.0)
+                                .init(color: (isLight
+                                    ? Color.black.opacity(appState.isExpanded ? 0.08 : 0.0)
+                                    : Color.white.opacity(appState.isExpanded ? 0.14 : 0.0)
+                                ), location: 1.0)
                             ]),
                             startPoint: .top,
                             endPoint: .bottom
@@ -180,10 +195,10 @@ public struct IslandContainerView: View {
                 containerShape
                     .fill(Color.clear)
                     .shadow(
-                        color: Color.black.opacity(appState.isExpanded ? 0.70 : 0.30),
-                        radius: appState.isExpanded ? 28 : 8,
+                        color: Color.black.opacity(appState.isExpanded ? 0.45 : 0.25),
+                        radius: appState.isExpanded ? 16 : 8,
                         x: 0,
-                        y: appState.isExpanded ? 14 : 3
+                        y: appState.isExpanded ? 8 : 3
                     )
                 
                 // Content View (Compact vs Expanded) with orchestrated asymmetric reveal
@@ -214,61 +229,72 @@ public struct IslandContainerView: View {
             .frame(width: islandWidth, height: islandHeight, alignment: .top)
             // CLIP SHAPE: NotchIslandShape with smoothly interpolated top fillets and bottom corners
             .clipShape(containerShape)
-            // Drop shelf glow when a drag is hovering over the island
-            .overlay(
-                containerShape
-                    .stroke(
-                        isTargetedForDrop ? Color.blue.opacity(0.8) : Color.clear,
-                        lineWidth: isTargetedForDrop ? 2 : 0
-                    )
-                    .shadow(
-                        color: isTargetedForDrop ? Color.blue.opacity(0.5) : .clear,
-                        radius: 12
-                    )
-                    .animation(IslandSpring.bouncy, value: isTargetedForDrop)
-            )
+            // Hovering a drag over the main island expands to reveal the shelf below,
+            // but the main island itself rejects drops (drops belong exclusively to the shelf tray).
+            .onDrop(of: [.fileURL, .item], isTargeted: $isTopHoveringDrag) { _ in
+                return false
+            }
             // Subtle breathing hover when idle in compact mode
             .scaleEffect(appState.isHovering && !appState.isExpanded ? 1.02 : 1.0, anchor: .top)
             .animation(IslandSpring.hover, value: appState.isHovering)
             .animation(appState.isExpanded ? IslandSpring.expand : IslandSpring.collapse, value: appState.isExpanded)
             .animation(IslandSpring.tabSlide, value: appState.activeTab)
             .onHover { hovering in
-                if appState.isExpanded {
-                    if !hovering {
-                        appState.handleMouseLeave()
-                    }
+                if !hovering {
+                    appState.cancelHover()
                 }
             }
-            // Accept any file being dragged — expand to Drop Shelf immediately on enter
-            .onDrop(of: [.fileURL, .item], isTargeted: $isTargetedForDrop) { providers in
-                // Expand to Drop Shelf immediately
-                appState.expand(tab: .dropShelf)
-                // Collect all dropped URLs
-                var urls: [URL] = []
-                let group = DispatchGroup()
-                for provider in providers {
-                    group.enter()
-                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                        if let url = url { urls.append(url) }
-                        group.leave()
-                    }
-                }
-                group.notify(queue: .main) {
-                    if !urls.isEmpty {
-                        dropManager.addItems(urls: urls)
-                    }
-                }
-                return true
-            }
-            // As soon as a drag enters the compact island, open Drop Shelf immediately
-            .onChange(of: isTargetedForDrop) { _, targeted in
-                if targeted {
-                    appState.expand(tab: .dropShelf)
-                }
+
+            // ── Split Bottom Shelf Rectangle (Separate rectangle below tab content) ──
+            if appState.isExpanded && (!dropManager.items.isEmpty || appState.isDraggingOver || isTrayDropTargeted || isTopHoveringDrag) {
+                BottomShelfRectangleView(isTargeted: $isTrayDropTargeted)
+                    .frame(width: islandBodyWidth)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .offset(y: 8)).combined(with: .scale(scale: 0.96, anchor: .top)),
+                            removal: .opacity.combined(with: .offset(y: 4)).combined(with: .scale(scale: 0.94, anchor: .top))
+                        )
+                    )
             }
             
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: isTopHoveringDrag) { _, targeted in
+            if targeted {
+                dragExitWorkItem?.cancel()
+                dragExitWorkItem = nil
+                appState.isDraggingOver = true
+                appState.expand()
+            } else {
+                scheduleDragExitCheck()
+            }
+        }
+        .onChange(of: isTrayDropTargeted) { _, targeted in
+            if targeted {
+                dragExitWorkItem?.cancel()
+                dragExitWorkItem = nil
+                appState.isDraggingOver = true
+            } else {
+                scheduleDragExitCheck()
+            }
+        }
+    }
+
+    private func scheduleDragExitCheck() {
+        dragExitWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak appState] in
+            guard let appState = appState else { return }
+            if !isTopHoveringDrag && !isTrayDropTargeted {
+                withAnimation(IslandSpring.collapse) {
+                    appState.isDraggingOver = false
+                    if !appState.isPinned && !appState.isHovering {
+                        appState.collapse()
+                    }
+                }
+            }
+        }
+        dragExitWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
     }
 }

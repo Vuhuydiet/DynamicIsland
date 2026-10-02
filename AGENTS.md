@@ -124,6 +124,10 @@ Closed Notch UI options dictate how the compact notch ears display information w
   - Routed dynamically via [`CompactIslandView.swift`](Sources/DynamicIsland/Views/Compact/CompactIslandView.swift).
 - **Opened Island Styles (`OpenedIslandStyle`)**:
   - `defaultStyle` ("Default"): The complete multi-tab workspace with top header HUD, full-width sliding pill bar, and centered tool content ([`FullHubExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/FullHubExpandedView.swift)).
+  - `bottomDeck` ("Bottom Deck"): Inverted layout with floating dock pill navigation anchored at the bottom edge for intuitive downward mouse flow ([`BottomDeckExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/BottomDeckExpandedView.swift)).
+  - `compactHUD` ("Compact HUD"): Low-profile streamlined cockpit (~490pt) with unified segmented control, ideal for smaller displays ([`CompactHUDExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/CompactHUDExpandedView.swift)).
+  - `floatingCards` ("Floating Cards"): VisionOS-inspired spatial glass architecture with elevated floating tab chips and recessed content card ([`FloatingCardsExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/FloatingCardsExpandedView.swift)).
+  - `commandCenter` ("Command Center"): Information-dense layout with live contextual badges (timer countdowns, playback equalizer, item counts) on tabs ([`CommandCenterExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/CommandCenterExpandedView.swift)).
   - Routed dynamically via [`ExpandedIslandView.swift`](Sources/DynamicIsland/Views/Expanded/ExpandedIslandView.swift).
 - **Option Naming**:
   - Option names displayed to users must be clean and descriptive (e.g. `"Default"`), never prefixed with arbitrary numbers like `"Option 1"`.
@@ -147,7 +151,7 @@ Closed Notch UI options dictate how the compact notch ears display information w
 - **HUD Order:** **CPU → RAM → Disk (used)** (Battery removed for compact elegance).
 
 ### 4.3 Full-Width Tab Bar
-- Tabs: `Media`, `Drop Shelf`, `Timer`, `Clipboard`, `Notes`.
+- Tabs: `Media`, `Timer`, `Clipboard`, `Notes` (Drop Shelf decoupled from tab bar into an instantaneous notch flyout tray).
 - Layout: Every tab pill uses `.frame(maxWidth: .infinity)` inside an `HStack(spacing: 4)` with `.padding(.horizontal, 40)` giving a generous 20pt margin from the vertical edges of the 560pt island.
 
 ### 4.4 Animation Architecture & Spring Physics (`IslandAnimations.swift`)
@@ -195,10 +199,18 @@ Closed Notch UI options dictate how the compact notch ears display information w
   - Production code must strictly reflect real media sessions. Demo player mocks, timers, and sparkle buttons must not be present in `MediaManager` or `MediaView`.
 
 ### 5.2 Drag-to-Notch Drop Shelf Subsystem
-- `IslandContainerView.onDrop` accepts `[.fileURL, .item]`.
-- `.onChange(of: isTargetedForDrop)` expands the island directly to the `dropShelf` tab as soon as dragged files enter the hover zone.
-- Visual feedback is a pulsing 2pt blue border overlay (`Color.blue.opacity(0.8)`).
-- Parked files are managed by `DropShelfManager.shared` with persistent security-scoped bookmarks and quick drag-out into Finder or other apps.
+- **Dedicated Split Bottom Shelf Architecture (`BottomShelfRectangleView.swift`)**:
+  - The Drop Shelf is completely decoupled from the main tab bar, eliminating tab clutter when empty.
+  - When files are parked or being dragged towards the notch, `BottomShelfRectangleView` unfolds as a dedicated, split secondary floating rectangle 12pt below the main island.
+  - **Width Calibration**: The shelf uses `islandBodyWidth = islandWidth - (expandedFlareWidth * 2)` (`516pt` for default 560pt island) to align flush with the straight vertical walls of the main island, avoiding protrusion caused by the top screen-bezel concave flares.
+  - **Drop Routing Rule (Tray Drop Only)**:
+    - Dragging over the main notch/island triggers expansion (`appState.isDraggingOver = true; appState.expand()`) to reveal the shelf below, but the main island **strictly rejects drops** (`return false`) to prevent accidental file parking over tab contents.
+    - Dropping is **exclusively accepted by the bottom shelf tray** (`BottomShelfRectangleView.onDrop`), which provides an illuminated cyan border, glow shadow, and dynamic label ("Release to park on shelf").
+    - Inter-rectangle hover transition is smoothed via an 0.8s debounce timer (`scheduleDragExitCheck`), preventing premature shelf disappearance when the cursor crosses the 12pt gap.
+  - **Hit-Testing**: `DynamicIslandHostingView.hitTest` and `WindowController` mouse tracking evaluate `appState.totalExpandedHeight` (`mainH + 12pt + shelfRectangleHeight`) so mouse clicks, drag-outs, and contextual menus on shelf cards function properly.
+  - Users can retrieve files in **1 action** (simply hover the notch to reveal the shelf and drag files out directly, zero tab clicks needed).
+  - Configurable card styles in Settings: **Square Cards** (default: 68×66pt card with 32×32 icon and hover `xmark` delete) or **Compact Strip** (horizontal capsules).
+- Parked files are managed by `DropShelfManager.shared` with multi-tier ingestion fallback (`loadObject`, `loadItem("public.file-url")`, `NSPasteboard(name: .drag)`), persistent security-scoped bookmarks, and quick drag-out into Finder or other apps.
 
 ### 5.3 Timers & Stopwatch Subsystem
 - Centered layout using `Spacer(minLength: 0)` on leading and trailing edges.

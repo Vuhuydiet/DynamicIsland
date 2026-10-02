@@ -50,7 +50,7 @@ public class DynamicIslandHostingView: NSHostingView<IslandContainerView> {
         
         if appState.isExpanded {
             let expandedW: CGFloat = appState.expandedWidth
-            let expandedH = appState.expandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
+            let expandedH = appState.totalExpandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
             let margin: CGFloat = 14.0
             
             let inX = point.x >= (centerX - expandedW / 2.0 - margin)
@@ -112,7 +112,7 @@ public class WindowController: ObservableObject {
         guard let screen = NSScreen.main else { return }
         
         let panelWidth: CGFloat = 640.0
-        let panelHeight: CGFloat = 340.0
+        let panelHeight: CGFloat = 440.0
         
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
@@ -133,7 +133,7 @@ public class WindowController: ObservableObject {
         guard let screen = NSScreen.main, let panel = self.panel else { return }
         
         let panelWidth: CGFloat = 640.0
-        let panelHeight: CGFloat = 340.0
+        let panelHeight: CGFloat = 440.0
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
         let originY = screenRect.maxY - panelHeight
@@ -196,7 +196,7 @@ public class WindowController: ObservableObject {
                 guard !appState.isPinned else { return }
 
                 let islandW: CGFloat = appState.expandedWidth
-                let expandedH = appState.expandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
+                let expandedH = appState.totalExpandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
                 let islandBottom: CGFloat = screen.frame.maxY - expandedH
                 let margin: CGFloat = 14.0
 

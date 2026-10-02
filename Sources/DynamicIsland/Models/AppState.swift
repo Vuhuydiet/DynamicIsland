@@ -4,7 +4,6 @@ import Combine
 
 public enum IslandTab: String, CaseIterable, Identifiable, Sendable {
     case media = "Media"
-    case dropShelf = "Drop Shelf"
     case timer = "Timer"
     case clipboard = "Clipboard"
     case notes = "Notes"
@@ -14,7 +13,6 @@ public enum IslandTab: String, CaseIterable, Identifiable, Sendable {
     public var icon: String {
         switch self {
         case .media: return "music.note"
-        case .dropShelf: return "tray.and.arrow.down.fill"
         case .timer: return "timer"
         case .clipboard: return "doc.on.clipboard.fill"
         case .notes: return "note.text"
@@ -66,7 +64,13 @@ public class AppState: ObservableObject {
     public static let expandedWidth: CGFloat = 560.0
     
     public var expandedWidth: CGFloat {
-        AppState.expandedWidth
+        switch SettingsManager.shared.openedIslandStyle {
+        case .defaultStyle:   return 560.0
+        case .bottomDeck:     return 560.0
+        case .compactHUD:     return 490.0
+        case .floatingCards:  return 560.0
+        case .commandCenter:  return 580.0
+        }
     }
     
     public var compactEarWidth: CGFloat {
@@ -110,13 +114,43 @@ public class AppState: ObservableObject {
         }
     }
     
+    public var shelfRectangleHeight: CGFloat {
+        guard !DropShelfManager.shared.items.isEmpty || isDraggingOver else { return 0 }
+        switch SettingsManager.shared.dropShelfCardStyle {
+        case .square:
+            return 92.0
+        case .compact:
+            return 60.0
+        }
+    }
+    
     public func expandedHeight(isNotchMode: Bool, notchHeight: CGFloat) -> CGFloat {
         let notchTopInset: CGFloat = isNotchMode ? max(34.0, notchHeight) : 8.0
         switch SettingsManager.shared.openedIslandStyle {
         case .defaultStyle:
             let contentH: CGFloat = 170.0
             return notchTopInset + 38.0 + contentH + 16.0
+        case .bottomDeck:
+            let contentH: CGFloat = 170.0
+            return notchTopInset + 38.0 + contentH + 46.0 + 16.0
+        case .compactHUD:
+            let contentH: CGFloat = 165.0
+            return notchTopInset + 32.0 + contentH + 14.0
+        case .floatingCards:
+            let contentH: CGFloat = 170.0
+            return notchTopInset + 42.0 + contentH + 20.0
+        case .commandCenter:
+            let contentH: CGFloat = 170.0
+            return notchTopInset + 40.0 + contentH + 16.0
         }
+    }
+
+    public func totalExpandedHeight(isNotchMode: Bool, notchHeight: CGFloat) -> CGFloat {
+        let mainH = expandedHeight(isNotchMode: isNotchMode, notchHeight: notchHeight)
+        if shelfRectangleHeight > 0 {
+            return mainH + 12.0 + shelfRectangleHeight
+        }
+        return mainH
     }
     
     public func toggleExpand() {
@@ -243,7 +277,7 @@ public class AppState: ObservableObject {
     
     public func handleDragEntered() {
         isDraggingOver = true
-        expand(tab: .dropShelf)
+        expand()
     }
     
     public func handleDragExited() {

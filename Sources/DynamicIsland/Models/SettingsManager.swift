@@ -42,7 +42,11 @@ public enum ClosedNotchStyle: String, CaseIterable, Identifiable {
 }
 
 public enum OpenedIslandStyle: String, CaseIterable, Identifiable {
-    case defaultStyle = "Default"
+    case defaultStyle   = "Default"
+    case bottomDeck     = "Bottom Deck"
+    case compactHUD     = "Compact HUD"
+    case floatingCards  = "Floating Cards"
+    case commandCenter  = "Command Center"
     
     public var id: String { rawValue }
 
@@ -50,6 +54,14 @@ public enum OpenedIslandStyle: String, CaseIterable, Identifiable {
         switch rawValue {
         case "Default", "Option 1 (Default)", "Option 1":
             self = .defaultStyle
+        case "Bottom Deck":
+            self = .bottomDeck
+        case "Compact HUD":
+            self = .compactHUD
+        case "Floating Cards":
+            self = .floatingCards
+        case "Command Center":
+            self = .commandCenter
         default:
             return nil
         }
@@ -64,10 +76,21 @@ public enum SoundScheme: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum DropShelfCardStyle: String, CaseIterable, Identifiable {
+    case square = "Square Cards"
+    case compact = "Compact Strip"
+    
+    public var id: String { rawValue }
+}
+
 public class SettingsManager: ObservableObject {
     public static let shared = SettingsManager()
     
     private let defaults = UserDefaults.standard
+    
+    @Published public var dropShelfCardStyle: DropShelfCardStyle {
+        didSet { defaults.set(dropShelfCardStyle.rawValue, forKey: "dropShelfCardStyle") }
+    }
     
     @Published public var notchStyle: NotchStyle {
         didSet { defaults.set(notchStyle.rawValue, forKey: "notchStyle") }
@@ -168,7 +191,9 @@ public class SettingsManager: ObservableObject {
         let savedClosedStyle = defaults.string(forKey: "closedNotchStyle").flatMap(ClosedNotchStyle.init) ?? .defaultStyle
         let savedOpenedStyle = defaults.string(forKey: "openedIslandStyle").flatMap(OpenedIslandStyle.init) ?? .defaultStyle
         let savedScheme = defaults.string(forKey: "soundScheme").flatMap(SoundScheme.init) ?? .classic
+        let savedCardStyle = defaults.string(forKey: "dropShelfCardStyle").flatMap(DropShelfCardStyle.init) ?? .square
 
+        self.dropShelfCardStyle = savedCardStyle
         self.notchStyle = savedStyle
         self.expandTrigger = savedTrigger
         self.islandTheme = savedTheme
@@ -201,6 +226,16 @@ public class SettingsManager: ObservableObject {
             }
         }
         self.launchAtLogin = isEnabled
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dynamicisland.setOpenedIslandStyle"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            if let styleStr = note.object as? String, let style = OpenedIslandStyle(rawValue: styleStr) {
+                self?.openedIslandStyle = style
+            }
+        }
     }
     
     public func setLaunchAtLogin(_ enable: Bool) {

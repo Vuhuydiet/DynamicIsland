@@ -25,8 +25,8 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
             return
         }
         
-        let width: CGFloat = 660
-        let height: CGFloat = 620
+        let width: CGFloat = 680
+        let height: CGFloat = 780
         
         let newWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),

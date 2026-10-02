@@ -150,15 +150,10 @@ public struct ClassicCompactRightEarView: View {
                     .foregroundColor(.white.opacity(0.65))
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
             } else if !dropShelfManager.items.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "folder.fill")
-                        .font(IslandFont.iconMicro)
-                        .foregroundColor(.blue.opacity(0.8))
-                    Text("Shelf")
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
+                Image(systemName: "folder.fill")
+                    .font(IslandFont.iconSmall)
+                    .foregroundColor(.blue.opacity(0.85))
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
             } else {
                 HStack(spacing: 3) {
                     Text("\(systemMonitor.stats.batteryPercent)%")

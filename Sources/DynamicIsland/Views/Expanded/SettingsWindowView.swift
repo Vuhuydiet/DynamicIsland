@@ -200,6 +200,23 @@ public struct GeneralSettingsTab: View {
                 .padding(.vertical, 4)
             }
 
+            // Drop Shelf Group
+            GroupBox(label: Label("File Drop Shelf", systemImage: "tray.and.arrow.down.fill").font(.system(size: 12, weight: .semibold))) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Card Layout:", selection: $settings.dropShelfCardStyle) {
+                        ForEach(DropShelfCardStyle.allCases) { style in
+                            Text(style.rawValue).tag(style)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Park files at the notch. When items are parked or being dragged, the shelf tray appears automatically alongside your tabs when hovering over the notch.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+
             // Island Mode Group
             GroupBox(label: Label("Island Behavior & Mode", systemImage: "macbook").font(.system(size: 12, weight: .semibold))) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -832,6 +849,31 @@ public struct OpenedOptionPreviewCard: View {
     public let onSelect: () -> Void
     @State private var activePreviewTab: String = "Media"
 
+    private var badgeText: String {
+        switch style {
+        case .defaultStyle:  return "Full Hub"
+        case .bottomDeck:    return "Bottom Dock"
+        case .compactHUD:    return "Compact Cockpit"
+        case .floatingCards: return "Spatial Glass"
+        case .commandCenter: return "Status Deck"
+        }
+    }
+
+    private var styleDescription: String {
+        switch style {
+        case .defaultStyle:
+            return "Full multi-tab workspace with persistent header HUD, fluid sliding tab bar, and tool views."
+        case .bottomDeck:
+            return "Inverted layout with floating dock pill navigation anchored at the bottom edge for intuitive downward mouse flow."
+        case .compactHUD:
+            return "Low-profile streamlined cockpit (~490pt) with unified segmented control, ideal for smaller displays."
+        case .floatingCards:
+            return "VisionOS-inspired spatial glass architecture with elevated floating tab chips and recessed content card."
+        case .commandCenter:
+            return "Information-dense layout with live contextual badges (timer countdowns, playback equalizer, item counts) on tabs."
+        }
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header Row
@@ -848,7 +890,7 @@ public struct OpenedOptionPreviewCard: View {
 
                 Spacer()
 
-                Text("Full Hub")
+                Text(badgeText)
                     .font(.system(size: 10, weight: .semibold))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
@@ -856,135 +898,20 @@ public struct OpenedOptionPreviewCard: View {
                     .foregroundColor(.accentColor)
             }
 
-            Text("Full multi-tab workspace with persistent header HUD, fluid sliding tab bar, and tool views.")
+            Text(styleDescription)
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
             // Visual Example Container
-            VStack(spacing: 5) {
-                // Top Header Example
-                HStack {
-                    HStack(spacing: 3) {
-                        Image(systemName: "apple.logo")
-                            .font(.system(size: 8))
-                            .foregroundColor(.white.opacity(0.6))
-                        Text("Dynamic Island")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.9))
-                    }
-                    
-                    Spacer()
-
-                    // Center camera notch indicator
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.black)
-                        .frame(width: 48, height: 10)
-                        .overlay(Circle().fill(Color(white: 0.25)).frame(width: 4, height: 4))
-
-                    Spacer()
-
-                    // Condensed stats + pin
-                    HStack(spacing: 4) {
-                        Text("CPU 12%")
-                            .font(.system(size: 7, design: .monospaced))
-                            .foregroundColor(.green)
-                        Text("RAM 8.4G")
-                            .font(.system(size: 7, design: .monospaced))
-                            .foregroundColor(.purple)
-                        Image(systemName: "pin.fill")
-                            .font(.system(size: 7))
-                            .foregroundColor(.orange)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
-
-                // Divider
-                Rectangle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(height: 0.5)
-                    .padding(.horizontal, 10)
-
-                // Tab Bar Example
-                HStack(spacing: 3) {
-                    ForEach(["Media", "Drop Shelf", "Timer", "Clipboard", "Notes"], id: \.self) { tabName in
-                        let isActive = (activePreviewTab == tabName)
-                        Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                activePreviewTab = tabName
-                            }
-                        } label: {
-                            Text(tabName)
-                                .font(.system(size: 8, weight: isActive ? .bold : .regular))
-                                .foregroundColor(isActive ? .white : .white.opacity(0.5))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .frame(maxWidth: .infinity)
-                                .background(
-                                    Capsule()
-                                        .fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity(0.04))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 10)
-
-                // Divider
-                Rectangle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(height: 0.5)
-                    .padding(.horizontal, 10)
-
-                // Content View Example
-                HStack(spacing: 8) {
-                    // Mini artwork
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(
-                            LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .frame(width: 32, height: 32)
-                        .overlay(
-                            Image(systemName: "music.note")
-                                .font(.system(size: 12))
-                                .foregroundColor(.white)
-                        )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(activePreviewTab == "Media" ? "Starboy" : activePreviewTab)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                        Text(activePreviewTab == "Media" ? "The Weeknd • Daft Punk" : "Interactive Tool Active")
-                            .font(.system(size: 8))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-
-                    Spacer()
-
-                    // Playback controls preview
-                    HStack(spacing: 6) {
-                        Image(systemName: "backward.fill").font(.system(size: 8)).foregroundColor(.white.opacity(0.7))
-                        Image(systemName: "play.circle.fill").font(.system(size: 16)).foregroundColor(.pink)
-                        Image(systemName: "forward.fill").font(.system(size: 8)).foregroundColor(.white.opacity(0.7))
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+            previewBody
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.black.opacity(0.4))
                 )
-                .padding(.horizontal, 10)
-                .padding(.bottom, 6)
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.black.opacity(0.4))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-            )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                )
         }
         .padding(12)
         .background(
@@ -999,6 +926,291 @@ public struct OpenedOptionPreviewCard: View {
         .onTapGesture {
             onSelect()
         }
+    }
+
+    @ViewBuilder
+    private var previewBody: some View {
+        switch style {
+        case .defaultStyle:
+            fullHubPreview
+        case .bottomDeck:
+            bottomDeckPreview
+        case .compactHUD:
+            compactHUDPreview
+        case .floatingCards:
+            floatingCardsPreview
+        case .commandCenter:
+            commandCenterPreview
+        }
+    }
+
+    // 1. Default (Full Hub) Preview
+    private var fullHubPreview: some View {
+        VStack(spacing: 5) {
+            topHeaderPreview(title: "Dynamic Island", dotColor: nil)
+
+            dividerPreview
+
+            HStack(spacing: 3) {
+                ForEach(["Media", "Shelf", "Timer", "Clip", "Notes"], id: \.self) { tabName in
+                    let isActive = (activePreviewTab == tabName || (activePreviewTab == "Media" && tabName == "Media"))
+                    Text(tabName)
+                        .font(.system(size: 8, weight: isActive ? .bold : .regular))
+                        .foregroundColor(isActive ? .white : .white.opacity(0.5))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .frame(maxWidth: .infinity)
+                        .background(Capsule().fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity(0.04)))
+                        .onTapGesture { activePreviewTab = tabName }
+                }
+            }
+            .padding(.horizontal, 10)
+
+            dividerPreview
+
+            miniContentPreview
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
+        }
+    }
+
+    // 3. Bottom Deck Preview
+    private var bottomDeckPreview: some View {
+        VStack(spacing: 5) {
+            topHeaderPreview(title: "Dynamic Island", dotColor: nil)
+
+            dividerPreview
+
+            miniContentPreview
+                .padding(.horizontal, 10)
+
+            dividerPreview
+
+            // Floating dock at bottom
+            HStack(spacing: 3) {
+                ForEach(["Media", "Shelf", "Timer", "Clip", "Notes"], id: \.self) { tabName in
+                    let isActive = (activePreviewTab == tabName || (activePreviewTab == "Media" && tabName == "Media"))
+                    Text(tabName)
+                        .font(.system(size: 8, weight: isActive ? .bold : .regular))
+                        .foregroundColor(isActive ? .white : .white.opacity(0.5))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .frame(maxWidth: .infinity)
+                        .background(Capsule().fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity(0.04)))
+                        .onTapGesture { activePreviewTab = tabName }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
+        }
+    }
+
+    // 4. Compact HUD Preview
+    private var compactHUDPreview: some View {
+        VStack(spacing: 4) {
+            topHeaderPreview(title: "Dynamic", dotColor: nil)
+
+            dividerPreview
+
+            // Unified segmented pill
+            HStack(spacing: 1) {
+                ForEach(["Media", "Shelf", "Timer", "Clip", "Notes"], id: \.self) { tabName in
+                    let isActive = (activePreviewTab == tabName || (activePreviewTab == "Media" && tabName == "Media"))
+                    Text(tabName)
+                        .font(.system(size: 7, weight: isActive ? .bold : .regular))
+                        .foregroundColor(isActive ? .white : .white.opacity(0.5))
+                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity)
+                        .background(isActive ? Capsule().fill(Color.white.opacity(0.25)) : nil)
+                        .onTapGesture { activePreviewTab = tabName }
+                }
+            }
+            .padding(2)
+            .background(Capsule().fill(Color.white.opacity(0.06)))
+            .padding(.horizontal, 16)
+
+            dividerPreview
+
+            miniContentPreview
+                .padding(.horizontal, 12)
+                .padding(.bottom, 5)
+        }
+    }
+
+    // 5. Floating Cards Preview
+    private var floatingCardsPreview: some View {
+        VStack(spacing: 5) {
+            topHeaderPreview(title: "Dynamic Island", dotColor: .cyan)
+
+            // Detached floating chips
+            HStack(spacing: 4) {
+                ForEach(["Media", "Shelf", "Timer", "Clip", "Notes"], id: \.self) { tabName in
+                    let isActive = (activePreviewTab == tabName || (activePreviewTab == "Media" && tabName == "Media"))
+                    Text(tabName)
+                        .font(.system(size: 7, weight: isActive ? .bold : .regular))
+                        .foregroundColor(isActive ? .white : .white.opacity(0.5))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isActive ? Color.white.opacity(0.22) : Color.white.opacity(0.04))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(isActive ? Color.white.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 0.5)
+                                )
+                        )
+                        .onTapGesture { activePreviewTab = tabName }
+                }
+            }
+            .padding(.horizontal, 10)
+
+            // Inset elevated glass card
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                    )
+
+                miniContentPreview
+                    .padding(4)
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 6)
+        }
+    }
+
+    // 6. Command Center Preview
+    private var commandCenterPreview: some View {
+        VStack(spacing: 5) {
+            topHeaderPreview(title: "Dynamic Hub", dotColor: .green)
+
+            dividerPreview
+
+            // Tabs with live status badges
+            HStack(spacing: 3) {
+                tabWithBadge(title: "Media", badge: "ılı", color: .green)
+                tabWithBadge(title: "Shelf", badge: "2", color: .cyan)
+                tabWithBadge(title: "Timer", badge: "04m", color: .orange)
+                tabWithBadge(title: "Clip", badge: "5", color: .purple)
+                tabWithBadge(title: "Notes", badge: "•", color: .yellow)
+            }
+            .padding(.horizontal, 8)
+
+            dividerPreview
+
+            miniContentPreview
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
+        }
+    }
+
+    private func tabWithBadge(title: String, badge: String, color: Color) -> some View {
+        let isActive = (activePreviewTab == title || (activePreviewTab == "Media" && title == "Media"))
+        return HStack(spacing: 2) {
+            Text(title)
+                .font(.system(size: 7, weight: isActive ? .bold : .regular))
+            Text(badge)
+                .font(.system(size: 6, weight: .bold, design: .monospaced))
+                .foregroundColor(color)
+        }
+        .foregroundColor(isActive ? .white : .white.opacity(0.5))
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity)
+        .background(Capsule().fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity(0.04)))
+        .onTapGesture { activePreviewTab = title }
+    }
+
+    private func topHeaderPreview(title: String, dotColor: Color?) -> some View {
+        HStack {
+            HStack(spacing: 3) {
+                if let dotColor = dotColor {
+                    Circle().fill(dotColor).frame(width: 4, height: 4)
+                } else {
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 8))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                Text(title)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+            
+            Spacer()
+
+            // Center camera notch indicator
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color.black)
+                .frame(width: 44, height: 9)
+                .overlay(Circle().fill(Color(white: 0.25)).frame(width: 3.5, height: 3.5))
+
+            Spacer()
+
+            // Condensed stats + pin
+            HStack(spacing: 4) {
+                Text("CPU 12%")
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.green)
+                Text("RAM 8.4G")
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.purple)
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 7))
+                    .foregroundColor(.orange)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+    }
+
+    private var dividerPreview: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.1))
+            .frame(height: 0.5)
+            .padding(.horizontal, 10)
+    }
+
+    private var miniContentPreview: some View {
+        HStack(spacing: 8) {
+            // Mini artwork
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(
+                    LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .frame(width: 28, height: 28)
+                .overlay(
+                    Image(systemName: "music.note")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white)
+                )
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(activePreviewTab == "Media" ? "Starboy" : activePreviewTab)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white)
+                Text(activePreviewTab == "Media" ? "The Weeknd • Daft Punk" : "Interactive Tool Viewport")
+                    .font(.system(size: 7))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+
+            Spacer()
+
+            // Playback controls preview
+            HStack(spacing: 5) {
+                Image(systemName: "backward.fill").font(.system(size: 7)).foregroundColor(.white.opacity(0.7))
+                Image(systemName: "play.circle.fill").font(.system(size: 14)).foregroundColor(.pink)
+                Image(systemName: "forward.fill").font(.system(size: 7)).foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
     }
 }
 

@@ -46,6 +46,14 @@ public struct ExpandedIslandView: View {
             switch settings.openedIslandStyle {
             case .defaultStyle:
                 FullHubExpandedView()
+            case .bottomDeck:
+                BottomDeckExpandedView()
+            case .compactHUD:
+                CompactHUDExpandedView()
+            case .floatingCards:
+                FloatingCardsExpandedView()
+            case .commandCenter:
+                CommandCenterExpandedView()
             }
         }
     }

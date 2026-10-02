@@ -37,13 +37,80 @@ public class DropShelfManager: ObservableObject {
     
     @Published public var items: [DroppedItem] = []
     
-    private init() {}
+    private init() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dynamicisland.addShelfItems"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            if let path = note.object as? String {
+                let url = URL(fileURLWithPath: path)
+                self?.addItems(urls: [url])
+            }
+        }
+    }
+    
+    public func handleDrop(providers: [NSItemProvider]) {
+        var collectedURLs: [URL] = []
+        let group = DispatchGroup()
+        
+        for provider in providers {
+            group.enter()
+            
+            if provider.canLoadObject(ofClass: URL.self) {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    if let url = url {
+                        DispatchQueue.main.async {
+                            collectedURLs.append(url)
+                        }
+                    }
+                    group.leave()
+                }
+            } else if provider.hasItemConformingToTypeIdentifier("public.file-url") {
+                provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
+                    DispatchQueue.main.async {
+                        if let url = item as? URL {
+                            collectedURLs.append(url)
+                        } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                            collectedURLs.append(url)
+                        } else if let str = item as? String, let url = URL(string: str) {
+                            collectedURLs.append(url)
+                        }
+                    }
+                    group.leave()
+                }
+            } else {
+                provider.loadItem(forTypeIdentifier: "public.item", options: nil) { item, _ in
+                    DispatchQueue.main.async {
+                        if let url = item as? URL {
+                            collectedURLs.append(url)
+                        }
+                    }
+                    group.leave()
+                }
+            }
+        }
+        
+        group.notify(queue: .main) {
+            if collectedURLs.isEmpty {
+                let dragPboard = NSPasteboard(name: .drag)
+                if let urls = dragPboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+                    collectedURLs = urls
+                }
+            }
+            
+            if !collectedURLs.isEmpty {
+                self.addItems(urls: collectedURLs)
+            }
+        }
+    }
     
     public func addItems(urls: [URL]) {
         for url in urls {
+            let cleanURL = url.standardizedFileURL
             // Prevent duplicates
-            if !items.contains(where: { $0.url == url }) {
-                items.insert(DroppedItem(url: url), at: 0)
+            if !items.contains(where: { $0.url.path == cleanURL.path }) {
+                items.insert(DroppedItem(url: cleanURL), at: 0)
             }
         }
         SoundManager.shared.play(.drop)

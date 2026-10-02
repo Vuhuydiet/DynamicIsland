@@ -13,7 +13,6 @@ public struct IslandTabContentView: View {
             Group {
                 switch appState.activeTab {
                 case .media:     MediaView()
-                case .dropShelf: DropShelfView()
                 case .timer:     TimerView()
                 case .clipboard: ClipboardView()
                 case .notes:     NotesView()
