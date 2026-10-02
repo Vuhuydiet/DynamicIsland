@@ -112,7 +112,7 @@ public class WindowController: ObservableObject {
         guard let screen = NSScreen.main else { return }
         
         let panelWidth: CGFloat = 640.0
-        let panelHeight: CGFloat = 440.0
+        let panelHeight: CGFloat = 480.0
         
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
@@ -133,7 +133,7 @@ public class WindowController: ObservableObject {
         guard let screen = NSScreen.main, let panel = self.panel else { return }
         
         let panelWidth: CGFloat = 640.0
-        let panelHeight: CGFloat = 440.0
+        let panelHeight: CGFloat = 480.0
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
         let originY = screenRect.maxY - panelHeight

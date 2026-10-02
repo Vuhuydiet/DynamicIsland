@@ -118,9 +118,9 @@ public class AppState: ObservableObject {
         guard !DropShelfManager.shared.items.isEmpty || isDraggingOver else { return 0 }
         switch SettingsManager.shared.dropShelfCardStyle {
         case .square:
-            return 92.0
+            return 120.0
         case .compact:
-            return 60.0
+            return 78.0
         }
     }
     

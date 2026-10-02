@@ -62,7 +62,7 @@ public struct BottomShelfRectangleView: View {
                 }
             }
         }
-        .frame(height: settings.dropShelfCardStyle == .square ? 92 : 60)
+        .frame(height: settings.dropShelfCardStyle == .square ? 120 : 78)
         .shadow(
             color: isTargeted ? Color.cyan.opacity(0.50) : Color.black.opacity(0.40),
             radius: isTargeted ? 16 : 10,
@@ -213,7 +213,7 @@ public struct BottomShelfRectangleView: View {
                 .foregroundColor(isTargeted ? .cyan : .white.opacity(0.75))
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 44)
+        .frame(height: settings.dropShelfCardStyle == .square ? 68 : 38)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isTargeted ? Color.cyan.opacity(0.18) : Color.white.opacity(0.03))
@@ -226,7 +226,7 @@ public struct BottomShelfRectangleView: View {
                 )
         )
         .padding(.horizontal, 10)
-        .padding(.bottom, 7)
+        .padding(.bottom, 8)
     }
 
     private var cardsScrollView: some View {
@@ -241,7 +241,7 @@ public struct BottomShelfRectangleView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 7)
+            .padding(.bottom, 8)
         }
     }
 }
@@ -338,21 +338,21 @@ public struct DropShelfSquareCard: View {
                 .foregroundColor(isSelected ? .cyan : .white.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: 60)
+                .frame(width: 64)
 
             Text(item.fileSizeString)
                 .font(IslandFont.micro)
                 .foregroundColor(isSelected ? .cyan.opacity(0.75) : .white.opacity(0.45))
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .padding(.horizontal, 4)
-        .frame(width: 66, height: 60)
+        .frame(width: 70, height: 70)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(cardBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(cardBorderColor, lineWidth: isSelected ? 1.5 : 0.75)
         )
     }
