@@ -189,8 +189,13 @@ public class AppState: ObservableObject {
         if isPinned && !force { return }
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
+        unhoverWorkItem?.cancel()
+        unhoverWorkItem = nil
         collapseWorkItem?.cancel()
         collapseWorkItem = nil
+        if force {
+            isHovering = false
+        }
         if isExpanded {
             withAnimation(IslandSpring.collapse) {
                 isExpanded = false
@@ -244,8 +249,16 @@ public class AppState: ObservableObject {
             }
         }
         
-        // In fullscreen mode or if clickOnly trigger is configured, hover unhides compact notch without auto-expanding
-        if isFullScreen || SettingsManager.shared.expandTrigger == .clickOnly {
+        // In fullscreen mode, hovering the notch directly displays the whole opened island
+        if isFullScreen {
+            let timeSinceCollapse = Date().timeIntervalSince(lastCollapseTime)
+            guard timeSinceCollapse >= collapseCooldown else { return }
+            self.expand()
+            return
+        }
+        
+        // If clickOnly trigger is configured, hover unhides compact notch without auto-expanding
+        if SettingsManager.shared.expandTrigger == .clickOnly {
             return
         }
         

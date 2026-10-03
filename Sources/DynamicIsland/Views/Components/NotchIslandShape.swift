@@ -19,17 +19,20 @@ public struct NotchIslandShape: Shape {
     public var flareHeight: CGFloat
     public var rBottom: CGFloat
     public var isExpanded: Bool
+    public var includeTopEdge: Bool
     
     public init(
         flareWidth: CGFloat = NotchIslandShape.defaultFlareWidth,
         flareHeight: CGFloat = NotchIslandShape.defaultFlareHeight,
         rBottom: CGFloat = NotchIslandShape.defaultBottomRadius,
-        isExpanded: Bool = false
+        isExpanded: Bool = false,
+        includeTopEdge: Bool = true
     ) {
         self.flareWidth = flareWidth
         self.flareHeight = flareHeight
         self.rBottom = rBottom
         self.isExpanded = isExpanded
+        self.includeTopEdge = includeTopEdge
     }
     
     public var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
@@ -93,9 +96,11 @@ public struct NotchIslandShape: Shape {
             control2: CGPoint(x: w - fw * 0.55, y: 0)
         )
         
-        // 8. Straight horizontal top edge: back to (0, 0)
-        path.addLine(to: CGPoint(x: 0, y: 0))
-        path.closeSubpath()
+        if includeTopEdge {
+            // 8. Straight horizontal top edge: back to (0, 0)
+            path.addLine(to: CGPoint(x: 0, y: 0))
+            path.closeSubpath()
+        }
         
         return path
     }
@@ -107,28 +112,33 @@ public struct IslandContainerShape: Shape {
     public var cornerRadius: CGFloat
     public var flareWidth: CGFloat
     public var flareHeight: CGFloat
+    public var includeTopEdge: Bool
     
     public init(
         isNotchMode: Bool,
         cornerRadius: CGFloat = 16.0,
         flareWidth: CGFloat = NotchIslandShape.defaultFlareWidth,
-        flareHeight: CGFloat = NotchIslandShape.defaultFlareHeight
+        flareHeight: CGFloat = NotchIslandShape.defaultFlareHeight,
+        includeTopEdge: Bool = true
     ) {
         self.isNotchMode = isNotchMode
         self.cornerRadius = cornerRadius
         self.flareWidth = flareWidth
         self.flareHeight = flareHeight
+        self.includeTopEdge = includeTopEdge
     }
     
     public init(
         isNotchMode: Bool,
         isExpanded: Bool,
-        cornerRadius: CGFloat = 16.0
+        cornerRadius: CGFloat = 16.0,
+        includeTopEdge: Bool = true
     ) {
         self.isNotchMode = isNotchMode
         self.cornerRadius = cornerRadius
         self.flareWidth = isExpanded ? NotchIslandShape.expandedFlareWidth : NotchIslandShape.compactFlareWidth
         self.flareHeight = isExpanded ? NotchIslandShape.expandedFlareHeight : NotchIslandShape.compactFlareHeight
+        self.includeTopEdge = includeTopEdge
     }
     
     public var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
@@ -147,11 +157,26 @@ public struct IslandContainerShape: Shape {
             let shape = NotchIslandShape(
                 flareWidth: flareWidth,
                 flareHeight: flareHeight,
-                rBottom: cornerRadius
+                rBottom: cornerRadius,
+                includeTopEdge: includeTopEdge
             )
             return shape.path(in: rect)
         } else {
-            return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect)
+            if includeTopEdge {
+                return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect)
+            } else {
+                var path = Path()
+                let r = min(cornerRadius, min(rect.width / 2, rect.height / 2))
+                path.move(to: CGPoint(x: r, y: 0))
+                path.addArc(tangent1End: CGPoint(x: 0, y: 0), tangent2End: CGPoint(x: 0, y: r), radius: r)
+                path.addLine(to: CGPoint(x: 0, y: rect.height - r))
+                path.addArc(tangent1End: CGPoint(x: 0, y: rect.height), tangent2End: CGPoint(x: r, y: rect.height), radius: r)
+                path.addLine(to: CGPoint(x: rect.width - r, y: rect.height))
+                path.addArc(tangent1End: CGPoint(x: rect.width, y: rect.height), tangent2End: CGPoint(x: rect.width, y: rect.height - r), radius: r)
+                path.addLine(to: CGPoint(x: rect.width, y: r))
+                path.addArc(tangent1End: CGPoint(x: rect.width, y: 0), tangent2End: CGPoint(x: rect.width - r, y: 0), radius: r)
+                return path
+            }
         }
     }
 }

@@ -95,6 +95,7 @@ public class WindowController: ObservableObject {
     public var panel: DynamicIslandPanel?
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
+    private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     
     private var fullScreenTimer: Timer?
@@ -342,77 +343,86 @@ public class WindowController: ObservableObject {
             }
         }
         
+        // Local monitor to track mouse moves and drags inside our own app windows (Settings, Panel, etc.)
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+            self?.checkMousePosition()
+            return event
+        }
+        
         // Global mouse movement monitor: handles mouse-enter hover detection and collapses when cursor leaves bounds.
         // NOTE: We do NOT use NSRect.contains because it is exclusive of the max edge —
         // a point at exactly screen.frame.maxY (the screen top) would fail the check and
         // incorrectly trigger a collapse. Instead we use an open-top boundary: only
         // collapse when the mouse is BELOW the island or outside its horizontal range.
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            guard let self = self else { return }
-            let appState = AppState.shared
-            guard let screen = self.panel?.screen ?? NSScreen.main else { return }
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] _ in
+            self?.checkMousePosition()
+        }
+    }
+    
+    private func checkMousePosition() {
+        let appState = AppState.shared
+        guard let screen = self.panel?.screen ?? NSScreen.main else { return }
 
-            let mouse = NSEvent.mouseLocation
-            let detector = NotchDetector.shared
-            let settings = SettingsManager.shared
-            let isNotchMode: Bool
-            switch settings.notchStyle {
-            case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
-            case .notch: isNotchMode = true
-            case .floating: isNotchMode = false
-            }
+        let mouse = NSEvent.mouseLocation
+        let detector = NotchDetector.shared
+        let settings = SettingsManager.shared
+        let isNotchMode: Bool
+        switch settings.notchStyle {
+        case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
+        case .notch: isNotchMode = true
+        case .floating: isNotchMode = false
+        }
 
-            // Periodically refresh fullscreen state on mouse motion
-            if Date().timeIntervalSince(self.lastFullScreenCheck) >= 0.5 {
-                self.lastFullScreenCheck = Date()
-                self.updateFullScreenState()
-            }
+        // Periodically refresh fullscreen state on mouse motion
+        if Date().timeIntervalSince(self.lastFullScreenCheck) >= 0.5 {
+            self.lastFullScreenCheck = Date()
+            self.updateFullScreenState()
+        }
 
-            if appState.isExpanded {
-                guard !appState.isPinned else { return }
+        if appState.isExpanded {
+            guard !appState.isPinned else { return }
 
-                let islandW: CGFloat = appState.expandedWidth
-                let expandedH = appState.totalExpandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
-                let islandBottom: CGFloat = screen.frame.maxY - expandedH
-                let margin: CGFloat = 14.0
+            let islandW: CGFloat = appState.expandedWidth
+            let expandedH = appState.totalExpandedHeight(isNotchMode: isNotchMode, notchHeight: detector.currentNotch.notchHeight)
+            let islandBottom: CGFloat = screen.frame.maxY - expandedH
+            let margin: CGFloat = 14.0
 
-                let inX = mouse.x >= (screen.frame.midX - islandW / 2.0 - margin)
-                       && mouse.x <= (screen.frame.midX + islandW / 2.0 + margin)
-                // Open-top: only check that cursor is above the island's bottom edge.
-                // No upper-Y check — the cursor physically cannot go above the screen top.
-                let inY = mouse.y >= (islandBottom - margin)
+            let inX = mouse.x >= (screen.frame.midX - islandW / 2.0 - margin)
+                   && mouse.x <= (screen.frame.midX + islandW / 2.0 + margin)
+            // Open-top: only check that cursor is above the island's bottom edge.
+            // No upper-Y check — the cursor physically cannot go above the screen top.
+            let inY = mouse.y >= (islandBottom - margin)
 
-                if !(inX && inY) {
-                    DispatchQueue.main.async {
-                        if appState.isExpanded && !appState.isPinned {
-                            appState.handleMouseLeave()
-                        }
+            if !(inX && inY) {
+                DispatchQueue.main.async {
+                    if appState.isExpanded && !appState.isPinned {
+                        appState.handleMouseLeave()
                     }
                 }
-            } else {
-                let notchH = detector.currentNotch.notchHeight > 0 ? detector.currentNotch.notchHeight : 32.0
-                let compactW = appState.compactIslandWidth
-                let compactH = isNotchMode ? notchH : 34.0
-                let topInset: CGFloat = isNotchMode ? 0.0 : 8.0
-                let marginX: CGFloat = appState.isFullScreen ? 24.0 : 0.0
-                let marginY: CGFloat = appState.isFullScreen ? 12.0 : 0.0
+            }
+        } else {
+            let notchH = detector.currentNotch.notchHeight > 0 ? detector.currentNotch.notchHeight : 32.0
+            let compactW = appState.compactIslandWidth
+            let compactH = isNotchMode ? notchH : 34.0
+            let topInset: CGFloat = isNotchMode ? 0.0 : 8.0
+            let marginX: CGFloat = appState.isFullScreen ? 24.0 : 0.0
+            let marginY: CGFloat = appState.isFullScreen ? 12.0 : 0.0
 
-                let inX = mouse.x >= (screen.frame.midX - compactW / 2.0 - marginX)
-                       && mouse.x <= (screen.frame.midX + compactW / 2.0 + marginX)
-                let compactBottom = screen.frame.maxY - topInset - compactH - marginY
-                let inY = mouse.y >= compactBottom
+            let inX = mouse.x >= (screen.frame.midX - compactW / 2.0 - marginX)
+                   && mouse.x <= (screen.frame.midX + compactW / 2.0 + marginX)
+            let compactBottom = screen.frame.maxY - topInset - compactH - marginY
+            let inY = mouse.y >= compactBottom
 
-                if inX && inY {
-                    DispatchQueue.main.async {
-                        if !appState.isExpanded {
-                            appState.handleMouseEnter()
-                        }
+            if inX && inY {
+                DispatchQueue.main.async {
+                    if !appState.isExpanded {
+                        appState.handleMouseEnter()
                     }
-                } else if appState.isHovering && !appState.isExpanded {
-                    DispatchQueue.main.async {
-                        if !appState.isExpanded {
-                            appState.handleMouseLeaveCompact()
-                        }
+                }
+            } else if appState.isHovering && !appState.isExpanded {
+                DispatchQueue.main.async {
+                    if !appState.isExpanded {
+                        appState.handleMouseLeaveCompact()
                     }
                 }
             }
@@ -423,6 +433,7 @@ public class WindowController: ObservableObject {
         fullScreenTimer?.invalidate()
         if let g = globalEventMonitor { NSEvent.removeMonitor(g) }
         if let l = localEventMonitor { NSEvent.removeMonitor(l) }
+        if let lm = localMouseMonitor { NSEvent.removeMonitor(lm) }
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
     }
 }

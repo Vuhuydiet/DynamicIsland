@@ -91,7 +91,19 @@ public struct IslandContainerView: View {
             isNotchMode: isNotchMode,
             cornerRadius: cornerRadius,
             flareWidth: currentFlareWidth,
-            flareHeight: currentFlareHeight
+            flareHeight: currentFlareHeight,
+            includeTopEdge: true
+        )
+    }
+
+    /// Stroke rim shape without the horizontal top edge, seamlessly sealing with the screen bezel and notch
+    private var rimShape: IslandContainerShape {
+        IslandContainerShape(
+            isNotchMode: isNotchMode,
+            cornerRadius: cornerRadius,
+            flareWidth: currentFlareWidth,
+            flareHeight: currentFlareHeight,
+            includeTopEdge: false
         )
     }
     
@@ -155,19 +167,20 @@ public struct IslandContainerView: View {
                         )
                     )
 
-                // 5. Specular rim
-                containerShape
+                // 5. Specular rim (only along sides and bottom — top edge omitted to merge seamlessly with notch/bezel)
+                rimShape
                     .stroke(
                         LinearGradient(
                             gradient: Gradient(stops: [
+                                .init(color: .clear, location: 0.0),
                                 .init(color: (isLight
-                                    ? Color.black.opacity(appState.isExpanded ? 0.12 : 0.0)
-                                    : Color.white.opacity(appState.isExpanded ? (appState.isHovering ? 0.38 : 0.22) : 0.0)
-                                ), location: 0.0),
+                                    ? Color.black.opacity(appState.isExpanded ? 0.08 : 0.0)
+                                    : Color.white.opacity(appState.isExpanded ? (appState.isHovering ? 0.28 : 0.16) : 0.0)
+                                ), location: 0.15),
                                 .init(color: (isLight
                                     ? Color.black.opacity(appState.isExpanded ? 0.04 : 0.0)
                                     : Color.white.opacity(appState.isExpanded ? 0.08 : 0.0)
-                                ), location: 0.35),
+                                ), location: 0.40),
                                 .init(color: (isLight
                                     ? Color.black.opacity(appState.isExpanded ? 0.08 : 0.0)
                                     : Color.white.opacity(appState.isExpanded ? 0.14 : 0.0)
@@ -178,13 +191,9 @@ public struct IslandContainerView: View {
                         ),
                         lineWidth: 1
                     )
-                    .shadow(color: (isLight
-                        ? Color.black.opacity(appState.isExpanded ? 0.05 : 0.0)
-                        : Color.white.opacity(appState.isExpanded ? 0.08 : 0.0)
-                    ), radius: 2, x: 0, y: -1)
 
-                // 6. Compact sleek border
-                containerShape
+                // 6. Compact sleek border (top edge omitted in notch mode)
+                rimShape
                     .stroke(
                         appState.isHovering
                             ? (isLight ? Color.black.opacity(0.18) : Color.white.opacity(0.24))
@@ -207,30 +216,30 @@ public struct IslandContainerView: View {
                 Group {
                     if appState.isExpanded {
                         ExpandedIslandView()
-                            .transition(
-                                .asymmetric(
-                                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top))
-                                        .animation(IslandSpring.expand.delay(0.04)),
-                                    removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
-                                        .animation(.easeOut(duration: 0.12))
-                                )
-                            )
+                            .transition(settings.expansionAnimation.expandedContentTransition(speedMultiplier: settings.animationSpeedMultiplier))
                     } else {
                         CompactIslandView()
-                            .transition(
-                                .asymmetric(
-                                    insertion: .opacity.combined(with: .scale(scale: 0.88, anchor: .top))
-                                        .animation(IslandSpring.collapse.delay(0.06)),
-                                    removal: .opacity.combined(with: .scale(scale: 0.82, anchor: .top))
-                                        .animation(.easeOut(duration: 0.10))
-                                )
-                            )
+                            .transition(settings.expansionAnimation.compactContentTransition(speedMultiplier: settings.animationSpeedMultiplier))
                     }
                 }
+
+                // 8. Creative VFX Overlay: Holographic laser scan, quantum plasma aura, stardust
+                IslandVFXOverlayView(
+                    style: settings.expansionAnimation,
+                    isExpanded: appState.isExpanded,
+                    width: islandWidth,
+                    height: islandHeight
+                )
             }
             .frame(width: islandWidth, height: islandHeight, alignment: .top)
             // CLIP SHAPE: NotchIslandShape with smoothly interpolated top fillets and bottom corners
             .clipShape(containerShape)
+            // Hover micro-interaction when compact
+            .scaleEffect(
+                x: 1.0,
+                y: appState.isHovering && !appState.isExpanded ? 1.02 : 1.0,
+                anchor: .top
+            )
             // Fullscreen auto-hide: hide unless mouse is hovering the notch, expanded, or dragging
             .opacity(isNotchVisible ? 1.0 : 0.0)
             .offset(y: isNotchVisible ? 0 : -(islandHeight + 10))
@@ -240,10 +249,10 @@ public struct IslandContainerView: View {
             .onDrop(of: [.fileURL, .item], isTargeted: $isTopHoveringDrag) { _ in
                 return false
             }
-            // Subtle breathing hover when idle in compact mode
-            .scaleEffect(appState.isHovering && !appState.isExpanded ? 1.02 : 1.0, anchor: .top)
             .animation(IslandSpring.hover, value: appState.isHovering)
-            .animation(appState.isExpanded ? IslandSpring.expand : IslandSpring.collapse, value: appState.isExpanded)
+            .animation(settings.expansionAnimation.widthAnimation(isExpanded: appState.isExpanded, speedMultiplier: settings.animationSpeedMultiplier), value: islandWidth)
+            .animation(settings.expansionAnimation.heightAnimation(isExpanded: appState.isExpanded, speedMultiplier: settings.animationSpeedMultiplier), value: islandHeight)
+            .animation(settings.expansionAnimation.expandAnimation(speedMultiplier: settings.animationSpeedMultiplier), value: appState.isExpanded)
             .animation(IslandSpring.tabSlide, value: appState.activeTab)
 
             // ── Split Bottom Shelf Rectangle (Separate rectangle below tab content) ──

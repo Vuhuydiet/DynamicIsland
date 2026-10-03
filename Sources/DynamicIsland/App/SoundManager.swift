@@ -40,7 +40,7 @@ public class SoundManager {
             case .collapse: soundName = "Tink"
             case .click: soundName = "Blow"
             case .drop: soundName = "Bottle"
-            case .timerAlert: soundName = "Glass"
+            case .timerAlert: soundName = "Ping" // High-frequency crisp chime
             }
         case .modern:
             switch type {
@@ -48,7 +48,7 @@ public class SoundManager {
             case .collapse: soundName = "Morse"
             case .click: soundName = "Ping"
             case .drop: soundName = "Purr"
-            case .timerAlert: soundName = "Submarine"
+            case .timerAlert: soundName = "Ping" // Increased from low-frequency Submarine to high-frequency Ping
             }
         case .subtle:
             switch type {
@@ -64,6 +64,14 @@ public class SoundManager {
             guard let sound = NSSound(named: soundName) else { return }
             sound.volume = Float(max(0.0, min(1.0, settings.soundVolume)))
             sound.play()
+        }
+    }
+    
+    /// Plays an urgent, high-frequency double-chime pulse for timer alerts
+    public func playTimerAlertPulse() {
+        play(.timerAlert)
+        DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 0.14) { [weak self] in
+            self?.play(.timerAlert)
         }
     }
 }

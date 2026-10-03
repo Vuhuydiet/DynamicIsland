@@ -76,6 +76,30 @@ public enum SoundScheme: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum TimerAlertCadence: String, CaseIterable, Identifiable {
+    case rapid = "Rapid (0.65s)"
+    case balanced = "Balanced (1.0s)"
+    case relaxed = "Relaxed (1.5s)"
+    
+    public var id: String { rawValue }
+    
+    public var interval: TimeInterval {
+        switch self {
+        case .rapid: return 0.65
+        case .balanced: return 1.0
+        case .relaxed: return 1.5
+        }
+    }
+    
+    public var repeatCount: Int {
+        switch self {
+        case .rapid: return 6
+        case .balanced: return 4
+        case .relaxed: return 3
+        }
+    }
+}
+
 public enum DropShelfCardStyle: String, CaseIterable, Identifiable {
     case square = "Square Cards"
     case compact = "Compact Strip"
@@ -110,6 +134,14 @@ public class SettingsManager: ObservableObject {
 
     @Published public var openedIslandStyle: OpenedIslandStyle {
         didSet { defaults.set(openedIslandStyle.rawValue, forKey: "openedIslandStyle") }
+    }
+
+    @Published public var expansionAnimation: ExpansionAnimationStyle {
+        didSet { defaults.set(expansionAnimation.rawValue, forKey: "expansionAnimation") }
+    }
+
+    @Published public var animationSpeedMultiplier: Double {
+        didSet { defaults.set(animationSpeedMultiplier, forKey: "animationSpeedMultiplier") }
     }
 
     /// Raw values of tabs the user wants hidden from the tab bar.
@@ -157,6 +189,10 @@ public class SettingsManager: ObservableObject {
         didSet { defaults.set(soundOnTimer, forKey: "soundOnTimer") }
     }
     
+    @Published public var timerAlertCadence: TimerAlertCadence {
+        didSet { defaults.set(timerAlertCadence.rawValue, forKey: "timerAlertCadence") }
+    }
+    
     // MARK: - General & Geometry Settings
     @Published public var showMenuBarIcon: Bool {
         didSet {
@@ -190,6 +226,8 @@ public class SettingsManager: ObservableObject {
         let savedTheme = defaults.string(forKey: "islandTheme").flatMap(IslandTheme.init) ?? .liquidGlass
         let savedClosedStyle = defaults.string(forKey: "closedNotchStyle").flatMap(ClosedNotchStyle.init) ?? .defaultStyle
         let savedOpenedStyle = defaults.string(forKey: "openedIslandStyle").flatMap(OpenedIslandStyle.init) ?? .defaultStyle
+        let savedAnim = defaults.string(forKey: "expansionAnimation").flatMap(ExpansionAnimationStyle.init) ?? .fluidApple
+        let savedSpeed = defaults.object(forKey: "animationSpeedMultiplier") as? Double ?? 1.0
         let savedScheme = defaults.string(forKey: "soundScheme").flatMap(SoundScheme.init) ?? .classic
         let savedCardStyle = defaults.string(forKey: "dropShelfCardStyle").flatMap(DropShelfCardStyle.init) ?? .square
 
@@ -199,6 +237,8 @@ public class SettingsManager: ObservableObject {
         self.islandTheme = savedTheme
         self.closedNotchStyle = savedClosedStyle
         self.openedIslandStyle = savedOpenedStyle
+        self.expansionAnimation = savedAnim
+        self.animationSpeedMultiplier = savedSpeed
         self.soundScheme = savedScheme
 
         // Restore hidden tabs (stored as array of raw-value strings)
@@ -212,6 +252,8 @@ public class SettingsManager: ObservableObject {
         self.soundOnTabSwitch = defaults.object(forKey: "soundOnTabSwitch") as? Bool ?? true
         self.soundOnDrop = defaults.object(forKey: "soundOnDrop") as? Bool ?? true
         self.soundOnTimer = defaults.object(forKey: "soundOnTimer") as? Bool ?? true
+        let savedCadence = defaults.string(forKey: "timerAlertCadence").flatMap(TimerAlertCadence.init) ?? .rapid
+        self.timerAlertCadence = savedCadence
         
         self.showMenuBarIcon = defaults.object(forKey: "showMenuBarIcon") as? Bool ?? true
         self.hoverDelay = defaults.object(forKey: "hoverDelay") as? Double ?? 0.05

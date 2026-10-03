@@ -155,9 +155,15 @@ Closed Notch UI options dictate how the compact notch ears display information w
 - Layout: Every tab pill uses `.frame(maxWidth: .infinity)` inside an `HStack(spacing: 4)` with `.padding(.horizontal, 40)` giving a generous 20pt margin from the vertical edges of the 560pt island.
 
 ### 4.4 Animation Architecture & Spring Physics (`IslandAnimations.swift`)
-- **Physics Calibration (`IslandSpring`)**:
-  - `expand`: `spring(response: 0.38, dampingFraction: 0.75)` — authentic Apple elastic ballooning expansion.
-  - `collapse`: `spring(response: 0.30, dampingFraction: 0.84)` — snappy, clean snap-back to notch.
+- **Configurable Expansion Choreography Styles & VFX Engine (`ExpansionAnimationStyle` & `IslandVFXOverlayView`)**:
+  - Dynamically configured in Preferences (**Animations → Expansion Animation Styles**), persisted via `SettingsManager.shared.expansionAnimation` and scaled via `SettingsManager.shared.animationSpeedMultiplier` (0.60×–1.75×).
+  - Presets:
+    - `fluidApple` ("Fluid Apple"): Authentic Cupertino minimalism — symmetrical fluid ballooning with continuous bezier flares.
+    - `holographicHUD` ("Holographic HUD"): Iron Man / Stark Tech — cyan laser scan line sweeps down from the camera notch accompanied by HUD corner targeting reticles (`[ ]`).
+- **Dynamic Physics & Staged Geometry Resolution**:
+  - `IslandContainerView` coordinates width, height, and content reveal through `settings.expansionAnimation.widthAnimation`, `heightAnimation`, and `expandAnimation`, combined with the sweeping laser beam and corner reticles in `IslandVFXOverlayView`.
+  - Asymmetric content transitions (`expandedContentTransition`, `compactContentTransition`) automatically adjust entrance delays, scales, and fade timings based on the selected animation style and speed multiplier.
+- **Micro-Interactions**:
   - `tabSlide`: `spring(response: 0.32, dampingFraction: 0.76)` — sliding matched-geometry pill indicators.
   - `bouncy`: `spring(response: 0.22, dampingFraction: 0.65)` — tactile button click/toggle micro-interaction.
   - `visualizer`: `spring(response: 0.18, dampingFraction: 0.65, blendDuration: 0.04)` — organic audio wave bounce.
@@ -167,6 +173,17 @@ Closed Notch UI options dictate how the compact notch ears display information w
 - **Matched Geometry & Asymmetric Transitions**:
   - Active tab indicators in both main navigation and timer mode use `@Namespace` and `.matchedGeometryEffect` to glide fluidly across pills.
   - View contents use asymmetric transitions with subtle vertical glide and opacity to eliminate flicker or clipping.
+
+### 4.5 Settings Window Architecture (`SettingsWindowView.swift`)
+- Re-architected with macOS System Settings design language (780×640pt window with 215pt frosted sidebar).
+- Categorized tabs:
+  1. `General`: Appearance themes, Island UI layout shells (`ClosedOptionPreviewCard`, `OpenedOptionPreviewCard`), and System startup/menu bar integration.
+  2. `Animations`: Dedicated expansion spring physics hub with live interactive notch playground simulator (`AnimationPlaygroundView`), style preset cards, and speed multiplier slider.
+  3. `Behavior & Tabs`: Docking modes (Auto Detect, Attached to Notch, Floating Pill), expansion triggers & hover sensitivity, tab visibility manager, and drop shelf layout.
+  4. `Sound Effects`: Global volume, audio theme scheme, and per-event sound toggles with live audition buttons.
+  5. `Geometry & Notch`: Real-time hardware notch telemetry readouts and pixel-accurate offset calibration.
+  6. `Shortcuts`: Global keyboard shortcuts with native `KeyCapView` styling and mouse gestures cheatsheet.
+  7. `About`: System status, framework badges, and application quit controls.
 
 ---
 

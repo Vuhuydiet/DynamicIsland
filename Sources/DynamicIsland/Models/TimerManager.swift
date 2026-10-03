@@ -118,12 +118,18 @@ public class TimerManager: ObservableObject {
             AppState.shared.activeTab = .timer
         }
         
-        // Play sound immediately, repeat 2 more times for prominence
-        SoundManager.shared.play(.timerAlert)
-        var repeatsLeft = 2
-        alertRepeatTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] t in
+        // Play sound immediately with rapid high-frequency pulse and increased cadence
+        let cadence = SettingsManager.shared.timerAlertCadence
+        SoundManager.shared.playTimerAlertPulse()
+        var repeatsLeft = cadence.repeatCount
+        alertRepeatTimer = Timer.scheduledTimer(withTimeInterval: cadence.interval, repeats: true) { [weak self] t in
             guard let self = self else { t.invalidate(); return }
-            SoundManager.shared.play(.timerAlert)
+            guard self.isTimerFinished else {
+                t.invalidate()
+                self.alertRepeatTimer = nil
+                return
+            }
+            SoundManager.shared.playTimerAlertPulse()
             repeatsLeft -= 1
             if repeatsLeft <= 0 {
                 self.alertRepeatTimer?.invalidate()

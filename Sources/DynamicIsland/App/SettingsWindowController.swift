@@ -18,6 +18,18 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
     }
     
     public func show() {
+        let collapseAction = {
+            if AppState.shared.isExpanded && !AppState.shared.isPinned {
+                AppState.shared.collapse()
+            }
+        }
+        
+        if Thread.isMainThread {
+            collapseAction()
+        } else {
+            DispatchQueue.main.async(execute: collapseAction)
+        }
+        
         if let window = self.window {
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
@@ -25,8 +37,8 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
             return
         }
         
-        let width: CGFloat = 680
-        let height: CGFloat = 780
+        let width: CGFloat = 780
+        let height: CGFloat = 640
         
         let newWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
@@ -36,6 +48,7 @@ public class SettingsWindowController: NSObject, NSWindowDelegate {
         )
         
         newWindow.title = "Dynamic Island Settings"
+        newWindow.minSize = NSSize(width: 720, height: 560)
         newWindow.center()
         newWindow.isReleasedWhenClosed = false
         newWindow.delegate = self
