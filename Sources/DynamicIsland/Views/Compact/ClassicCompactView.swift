@@ -4,11 +4,12 @@ public struct ClassicCompactLeftEarView: View {
     @ObservedObject var mediaManager = MediaManager.shared
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var dropShelfManager = DropShelfManager.shared
+    @ObservedObject var settings = SettingsManager.shared
     public var bellWobble: Bool
 
     public var body: some View {
         HStack(spacing: 6) {
-            if timerManager.isTimerFinished {
+            if settings.isTabVisible(.timer) && timerManager.isTimerFinished {
                 HStack(spacing: 3) {
                     Image(systemName: "bell.fill")
                         .font(IslandFont.iconMicro)
@@ -20,7 +21,7 @@ public struct ClassicCompactLeftEarView: View {
                         .lineLimit(1)
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if timerManager.isTimerRunning {
+            } else if settings.isTabVisible(.timer) && timerManager.isTimerRunning {
                 HStack(spacing: 4) {
                     Image(systemName: "timer")
                         .font(IslandFont.iconMicro)
@@ -32,7 +33,7 @@ public struct ClassicCompactLeftEarView: View {
                         .minimumScaleFactor(0.75)
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0 {
+            } else if settings.isTabVisible(.timer) && (timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0) {
                 HStack(spacing: 4) {
                     Image(systemName: "stopwatch.fill")
                         .font(IslandFont.iconMicro)
@@ -44,12 +45,12 @@ public struct ClassicCompactLeftEarView: View {
                         .minimumScaleFactor(0.75)
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if mediaManager.currentTrack.isPlaying {
+            } else if settings.isTabVisible(.media) && mediaManager.currentTrack.isPlaying {
                 Image(systemName: mediaManager.currentTrack.source.iconName)
                     .font(IslandFont.iconSmall)
                     .foregroundColor(mediaManager.currentTrack.source.accentColor)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
+            } else if settings.isTabVisible(.media) && mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
                 Image(systemName: mediaManager.currentTrack.source.iconName)
                     .font(IslandFont.iconSmall)
                     .foregroundColor(mediaManager.currentTrack.source.accentColor.opacity(0.85))
@@ -85,11 +86,12 @@ public struct ClassicCompactRightEarView: View {
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var systemMonitor = SystemMonitor.shared
     @ObservedObject var dropShelfManager = DropShelfManager.shared
+    @ObservedObject var settings = SettingsManager.shared
     public var bellWobble: Bool
 
     public var body: some View {
         HStack(spacing: 6) {
-            if timerManager.isTimerFinished {
+            if settings.isTabVisible(.timer) && timerManager.isTimerFinished {
                 HStack(spacing: 4) {
                     Circle()
                         .fill(Color.orange)
@@ -101,7 +103,7 @@ public struct ClassicCompactRightEarView: View {
                         .lineLimit(1)
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if timerManager.isTimerRunning {
+            } else if settings.isTabVisible(.timer) && timerManager.isTimerRunning {
                 HStack(spacing: 4) {
                     ZStack {
                         Circle()
@@ -118,7 +120,7 @@ public struct ClassicCompactRightEarView: View {
                         .foregroundColor(.white.opacity(0.70))
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0 {
+            } else if settings.isTabVisible(.timer) && (timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0) {
                 if !timerManager.laps.isEmpty {
                     HStack(spacing: 3) {
                         Image(systemName: "flag.fill")
@@ -141,10 +143,10 @@ public struct ClassicCompactRightEarView: View {
                     }
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
                 }
-            } else if mediaManager.currentTrack.isPlaying {
+            } else if settings.isTabVisible(.media) && mediaManager.currentTrack.isPlaying {
                 EqualizerVisualizerView(tint: mediaManager.currentTrack.source.accentColor, maxHeight: 11)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
+            } else if settings.isTabVisible(.media) && mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
                 Image(systemName: "pause.fill")
                     .font(IslandFont.iconMicro)
                     .foregroundColor(.white.opacity(0.65))

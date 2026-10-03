@@ -206,6 +206,17 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     private var pollTimer: Timer?
     private var visualizerTimer: Timer?
     
+    /// Debounce counter: how many consecutive poll cycles have reported isPlaying=false.
+    /// We require multiple consecutive false readings before flipping the UI state to
+    /// prevent flicker caused by transient MediaRemote timeouts during video playback.
+    private var playingFalseStreak: Int = 0
+    private let playingFalseThreshold: Int = 3
+    
+    /// Debounce counter: how many consecutive refresh cycles have returned no track.
+    /// We require multiple consecutive empty results before dropping an active track to avoid flicker.
+    private var emptyTrackStreak: Int = 0
+    private let emptyTrackThreshold: Int = 3
+    
     // MediaRemote function pointers
     private typealias MRGetNowPlayingInfoType = @convention(c) (DispatchQueue, @escaping @Sendable (CFDictionary?) -> Void) -> Void
     private typealias MRRegisterNotificationsType = @convention(c) (DispatchQueue) -> Void
@@ -325,8 +336,10 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         let timer = Timer(timeInterval: 0.6, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.updateLivePosition()
-            self.quickPlaybackStateCheck()
-            self.refreshMedia()
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.quickPlaybackStateCheck()
+                self?.refreshMedia()
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         pollTimer = timer
@@ -350,15 +363,42 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     private func quickPlaybackStateCheck() {
         guard Date().timeIntervalSince(lastUserToggleTime) >= userToggleCooldown else { return }
         
+        // Do not flip isPlaying to true if there is no actual active media track!
+        guard currentTrack.source != .none && currentTrack.title != "No Media Playing" else {
+            if currentTrack.isPlaying {
+                DispatchQueue.main.async { [weak self] in
+                    self?.currentTrack.isPlaying = false
+                    self?.playbackStatus = .stopped
+                }
+            }
+            return
+        }
+        
         let (newIsPlaying, isPaused) = checkPlaybackState(rate: nil)
         let currentIsPlaying = currentTrack.isPlaying
         
-        if currentIsPlaying != newIsPlaying {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.currentTrack.isPlaying = newIsPlaying
-                self.cachedWebTrack?.isPlaying = newIsPlaying
-                self.playbackStatus = newIsPlaying ? .playing : (isPaused ? .paused : .stopped)
+        if newIsPlaying {
+            // Immediately apply playing state & reset debounce streak
+            playingFalseStreak = 0
+            if !currentIsPlaying {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.currentTrack.isPlaying = true
+                    self.cachedWebTrack?.isPlaying = true
+                    self.playbackStatus = .playing
+                }
+            }
+        } else if currentIsPlaying {
+            // Debounce: require multiple consecutive not-playing readings before flipping
+            playingFalseStreak += 1
+            if playingFalseStreak >= playingFalseThreshold {
+                playingFalseStreak = 0
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.currentTrack.isPlaying = false
+                    self.cachedWebTrack?.isPlaying = false
+                    self.playbackStatus = isPaused ? .paused : .stopped
+                }
             }
         }
     }
@@ -392,6 +432,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 guard let self = self else { return }
                 if let track = mrTrack {
                     DispatchQueue.main.async {
+                        self.emptyTrackStreak = 0
                         self.applyTrackUpdate(track)
                         self.isRefreshing = false
                     }
@@ -402,6 +443,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 if self.isAppRunning(bundleId: "com.apple.Music"),
                    let musicTrack = self.fetchAppleMusicTrack() {
                     DispatchQueue.main.async {
+                        self.emptyTrackStreak = 0
                         self.applyTrackUpdate(musicTrack)
                         self.isRefreshing = false
                     }
@@ -412,6 +454,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 if self.isAppRunning(bundleId: "com.spotify.client"),
                    let spotifyTrack = self.fetchSpotifyTrack() {
                     DispatchQueue.main.async {
+                        self.emptyTrackStreak = 0
                         self.applyTrackUpdate(spotifyTrack)
                         self.isRefreshing = false
                     }
@@ -422,6 +465,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 if self.isAppRunning(bundleId: "com.apple.QuickTimePlayerX"),
                    let qtTrack = self.fetchQuickTimeTrack() {
                     DispatchQueue.main.async {
+                        self.emptyTrackStreak = 0
                         self.applyTrackUpdate(qtTrack)
                         self.isRefreshing = false
                     }
@@ -431,6 +475,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 if self.isAppRunning(bundleId: "org.videolan.vlc"),
                    let vlcTrack = self.fetchVLCTrack() {
                     DispatchQueue.main.async {
+                        self.emptyTrackStreak = 0
                         self.applyTrackUpdate(vlcTrack)
                         self.isRefreshing = false
                     }
@@ -441,6 +486,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 let isAudioRunning = AudioOutputMonitor.shared.isAudioPlaying()
                 if let webTrack = self.fetchWebVideoTrack(isAudioRunning: isAudioRunning) {
                     DispatchQueue.main.async {
+                        self.emptyTrackStreak = 0
                         self.applyTrackUpdate(webTrack)
                         self.isRefreshing = false
                     }
@@ -449,6 +495,16 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 
                 // Tier 6: No media active anywhere
                 DispatchQueue.main.async {
+                    // If audio is actively playing through the system or track is marked playing,
+                    // debounce transitioning to .empty to avoid flicker on transient metadata misses.
+                    if self.currentTrack.source != .none && (isAudioRunning || self.currentTrack.isPlaying) {
+                        self.emptyTrackStreak += 1
+                        if self.emptyTrackStreak < self.emptyTrackThreshold {
+                            self.isRefreshing = false
+                            return
+                        }
+                    }
+                    self.emptyTrackStreak = 0
                     self.applyTrackUpdate(.empty)
                     self.isRefreshing = false
                 }
@@ -468,7 +524,17 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         } else {
             // Track title & source unchanged: update state smoothly without flickering view
             if !isUserCooldown {
-                self.currentTrack.isPlaying = track.isPlaying
+                if track.isPlaying && !self.currentTrack.isPlaying {
+                    // Going from paused → playing: apply immediately
+                    self.currentTrack.isPlaying = true
+                    playingFalseStreak = 0
+                } else if !track.isPlaying && self.currentTrack.isPlaying {
+                    // Going from playing → paused: let debounce handle it (don't flip here)
+                    // quickPlaybackStateCheck will confirm after consecutive readings
+                } else {
+                    // No change — just reset streak if still playing
+                    if track.isPlaying { playingFalseStreak = 0 }
+                }
             }
             if !isUserCooldown && abs(self.currentTrack.position - track.position) > 1.5 {
                 self.currentTrack.position = track.position
@@ -506,12 +572,12 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             return (isPlaying: true, isPaused: false)
         }
         
-        // 2. Explicit paused indicators (when hardware audio is quiet)
-        if (mrPaused || (rate != nil && rate == 0.0)) && !audioRunning {
+        // 2. Explicit paused indicators from MediaRemote
+        if mrPaused || (rate != nil && rate == 0.0) {
             return (isPlaying: false, isPaused: true)
         }
         
-        // 3. CoreAudio hardware output running
+        // 3. CoreAudio hardware output running (fallback when MediaRemote has no explicit state)
         if audioRunning {
             return (isPlaying: true, isPaused: false)
         }
@@ -744,6 +810,10 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             lastWebQueryTime = now
             return found
         } else {
+            if isAudioRunning, var cached = cachedWebTrack, now.timeIntervalSince(lastWebQueryTime) < 3.5 {
+                cached.isPlaying = true
+                return cached
+            }
             cachedWebTrack = nil
             return nil
         }
@@ -1072,7 +1142,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         SoundManager.shared.play(.click)
         var handled = false
         
-        // 1. Native desktop players
+        // 1. Native desktop players via AppleScript
         if currentTrack.source == .music || currentTrack.bundleIdentifier == "com.apple.Music" {
             if executeAppleScript("tell application \"Music\" to next track") {
                 handled = true
@@ -1087,32 +1157,23 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             }
         }
         
+        // 2. System-wide MediaRemote next track command (like physical keyboard key)
         if !handled {
-            // 2. YouTube DOM next button if JavaScript from Apple Events is enabled in browser
-            if currentTrack.source == .youtube {
-                triggerYouTubeButton(selector: ".ytp-next-button")
-            }
-            
-            // 3. System-wide MediaRemote next track command
-            _ = sendMediaRemoteCommand(MRCommand.nextTrack.rawValue)
-            
-            // 4. Web video / audio seek forward fallback (10 seconds)
-            // If within 2s of end, jump to end to trigger autoplay / playlist advance
-            if (currentTrack.source == .youtube || currentTrack.source == .browser) && currentTrack.duration > 0 {
-                let target: Double
-                if currentTrack.position + 10.0 >= currentTrack.duration - 2.0 {
-                    target = currentTrack.duration
-                } else {
-                    target = min(currentTrack.duration, currentTrack.position + 10.0)
-                }
-                seek(to: target)
+            let sent = sendMediaRemoteCommand(MRCommand.nextTrack.rawValue)
+            if sent {
                 handled = true
             }
-            
-            // 5. System media key fallback
-            if !handled {
-                sendSystemMediaKey(key: 17)
-            }
+        }
+        
+        // 3. YouTube DOM next button fallback
+        if !handled && currentTrack.source == .youtube {
+            triggerYouTubeButton(selector: ".ytp-next-button")
+            handled = true
+        }
+        
+        // 4. System media key fallback (NX_KEYTYPE_NEXT)
+        if !handled {
+            sendSystemMediaKey(key: 17)
         }
         
         lastUserToggleTime = Date()
@@ -1127,7 +1188,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         SoundManager.shared.play(.click)
         var handled = false
         
-        // 1. Native desktop players
+        // 1. Native desktop players via AppleScript
         if currentTrack.source == .music || currentTrack.bundleIdentifier == "com.apple.Music" {
             if executeAppleScript("tell application \"Music\" to previous track") {
                 handled = true
@@ -1142,32 +1203,23 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             }
         }
         
+        // 2. System-wide MediaRemote previous track command (like physical keyboard key)
         if !handled {
-            // 2. YouTube DOM prev button if JavaScript from Apple Events is enabled in browser
-            if currentTrack.source == .youtube {
-                triggerYouTubeButton(selector: ".ytp-prev-button")
-            }
-            
-            // 3. System-wide MediaRemote previous track command
-            _ = sendMediaRemoteCommand(MRCommand.previousTrack.rawValue)
-            
-            // 4. Web video / audio seek backward fallback
-            // If more than 10 seconds in, skip back 10s. If in first 10s, restart from 0s.
-            if (currentTrack.source == .youtube || currentTrack.source == .browser) && currentTrack.duration > 0 {
-                let target: Double
-                if currentTrack.position > 10.0 {
-                    target = max(0.0, currentTrack.position - 10.0)
-                } else {
-                    target = 0.0
-                }
-                seek(to: target)
+            let sent = sendMediaRemoteCommand(MRCommand.previousTrack.rawValue)
+            if sent {
                 handled = true
             }
-            
-            // 5. System media key fallback
-            if !handled {
-                sendSystemMediaKey(key: 18)
-            }
+        }
+        
+        // 3. YouTube DOM prev button fallback
+        if !handled && currentTrack.source == .youtube {
+            triggerYouTubeButton(selector: ".ytp-prev-button")
+            handled = true
+        }
+        
+        // 4. System media key fallback (NX_KEYTYPE_PREVIOUS)
+        if !handled {
+            sendSystemMediaKey(key: 18)
         }
         
         lastUserToggleTime = Date()

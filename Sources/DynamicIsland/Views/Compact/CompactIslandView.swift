@@ -2,7 +2,6 @@ import SwiftUI
 
 public struct CompactIslandView: View {
     @ObservedObject var appState = AppState.shared
-    @ObservedObject var mediaManager = MediaManager.shared
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var systemMonitor = SystemMonitor.shared
     @ObservedObject var dropShelfManager = DropShelfManager.shared
@@ -79,13 +78,13 @@ public struct CompactIslandView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             SoundManager.shared.play(.click)
-            if timerManager.isTimerFinished {
+            if settings.isTabVisible(.timer) && timerManager.isTimerFinished {
                 timerManager.mode = .timer
                 appState.expand(tab: .timer)
-            } else if timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0 {
+            } else if settings.isTabVisible(.timer) && (timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0) {
                 timerManager.mode = .stopwatch
                 appState.expand(tab: .timer)
-            } else if timerManager.isTimerRunning {
+            } else if settings.isTabVisible(.timer) && timerManager.isTimerRunning {
                 timerManager.mode = .timer
                 appState.expand(tab: .timer)
             } else {

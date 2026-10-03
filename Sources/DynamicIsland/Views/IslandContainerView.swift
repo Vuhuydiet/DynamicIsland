@@ -5,8 +5,6 @@ public struct IslandContainerView: View {
     @ObservedObject var detector = NotchDetector.shared
     @ObservedObject var settings = SettingsManager.shared
     @ObservedObject var dropManager = DropShelfManager.shared
-    @ObservedObject var mediaManager = MediaManager.shared
-    @ObservedObject var timerManager = TimerManager.shared
     
     @State private var isTopHoveringDrag = false
     @State private var isTrayDropTargeted = false
@@ -95,6 +93,10 @@ public struct IslandContainerView: View {
             flareWidth: currentFlareWidth,
             flareHeight: currentFlareHeight
         )
+    }
+    
+    private var isNotchVisible: Bool {
+        !appState.isFullScreen || appState.isHovering || appState.isExpanded || appState.isDraggingOver
     }
     
     public var body: some View {
@@ -229,6 +231,10 @@ public struct IslandContainerView: View {
             .frame(width: islandWidth, height: islandHeight, alignment: .top)
             // CLIP SHAPE: NotchIslandShape with smoothly interpolated top fillets and bottom corners
             .clipShape(containerShape)
+            // Fullscreen auto-hide: hide unless mouse is hovering the notch, expanded, or dragging
+            .opacity(isNotchVisible ? 1.0 : 0.0)
+            .offset(y: isNotchVisible ? 0 : -(islandHeight + 10))
+            .animation(isNotchVisible ? IslandSpring.expand : IslandSpring.collapse, value: isNotchVisible)
             // Hovering a drag over the main island expands to reveal the shelf below,
             // but the main island itself rejects drops (drops belong exclusively to the shelf tray).
             .onDrop(of: [.fileURL, .item], isTargeted: $isTopHoveringDrag) { _ in
@@ -239,11 +245,6 @@ public struct IslandContainerView: View {
             .animation(IslandSpring.hover, value: appState.isHovering)
             .animation(appState.isExpanded ? IslandSpring.expand : IslandSpring.collapse, value: appState.isExpanded)
             .animation(IslandSpring.tabSlide, value: appState.activeTab)
-            .onHover { hovering in
-                if !hovering {
-                    appState.cancelHover()
-                }
-            }
 
             // ── Split Bottom Shelf Rectangle (Separate rectangle below tab content) ──
             if appState.isExpanded && (!dropManager.items.isEmpty || appState.isDraggingOver || isTrayDropTargeted || isTopHoveringDrag) {

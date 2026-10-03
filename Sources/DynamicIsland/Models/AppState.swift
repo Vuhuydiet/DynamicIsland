@@ -28,8 +28,10 @@ public class AppState: ObservableObject {
     @Published public var activeTab: IslandTab = .media
     @Published public var isHovering: Bool = false
     @Published public var isDraggingOver: Bool = false
+    @Published public var isFullScreen: Bool = false
     
     private var hoverWorkItem: DispatchWorkItem?
+    private var unhoverWorkItem: DispatchWorkItem?
     private var collapseWorkItem: DispatchWorkItem?
     
     private var lastCollapseTime: Date = .distantPast
@@ -75,15 +77,19 @@ public class AppState: ObservableObject {
     
     public var compactEarWidth: CGFloat {
         let base: CGFloat
-        switch SettingsManager.shared.closedNotchStyle {
+        let settings = SettingsManager.shared
+        switch settings.closedNotchStyle {
         case .defaultStyle:
-            if TimerManager.shared.isTimerFinished {
+            let timerVisible = settings.isTabVisible(.timer)
+            let mediaVisible = settings.isTabVisible(.media)
+            
+            if timerVisible && TimerManager.shared.isTimerFinished {
                 base = 65.0
-            } else if TimerManager.shared.isTimerRunning {
+            } else if timerVisible && TimerManager.shared.isTimerRunning {
                 base = TimerManager.shared.remainingSeconds >= 3600 ? 78.0 : 65.0
-            } else if TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0 {
+            } else if timerVisible && (TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0) {
                 base = TimerManager.shared.stopwatchElapsed >= 3600 ? 82.0 : 70.0
-            } else if MediaManager.shared.currentTrack.isPlaying || (MediaManager.shared.currentTrack.source != .none && MediaManager.shared.currentTrack.title != "No Media Playing") {
+            } else if mediaVisible && (MediaManager.shared.currentTrack.isPlaying || (MediaManager.shared.currentTrack.source != .none && MediaManager.shared.currentTrack.title != "No Media Playing")) {
                 base = 50.0 // Media: icon only left, visualizer/pause right
             } else if !DropShelfManager.shared.items.isEmpty {
                 base = 50.0
@@ -91,7 +97,7 @@ public class AppState: ObservableObject {
                 base = 56.0 // Idle: Apple logo left, battery % right
             }
         }
-        return base + CGFloat(SettingsManager.shared.customWidthOffset) / 2.0
+        return base + CGFloat(settings.customWidthOffset) / 2.0
     }
     
     public var compactIslandWidth: CGFloat {
@@ -109,7 +115,9 @@ public class AppState: ObservableObject {
             return notchW + (compactEarWidth * 2.0) + (NotchIslandShape.compactFlareWidth * 2.0)
         } else {
             let isStopwatchActive = TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0
-            let base: CGFloat = (MediaManager.shared.currentTrack.isPlaying || TimerManager.shared.isTimerRunning || isStopwatchActive) ? 260.0 : 180.0
+            let mediaActive = settings.isTabVisible(.media) && MediaManager.shared.currentTrack.isPlaying
+            let timerActive = settings.isTabVisible(.timer) && (TimerManager.shared.isTimerRunning || isStopwatchActive)
+            let base: CGFloat = (mediaActive || timerActive) ? 260.0 : 180.0
             return base + CGFloat(settings.customWidthOffset)
         }
     }
@@ -196,10 +204,6 @@ public class AppState: ObservableObject {
         collapseWorkItem?.cancel()
         collapseWorkItem = nil
         
-        guard SettingsManager.shared.expandTrigger == .hoverAndClick else {
-            isHovering = true
-            return
-        }
         guard !isExpanded else { return }
         
         // Strict boundary check: cursor must physically be inside the notch / compact pill
@@ -219,20 +223,36 @@ public class AppState: ObservableObject {
             let compactH = isNotchMode ? notchH : 34.0
             let topInset: CGFloat = isNotchMode ? 0.0 : 8.0
             
-            let inX = mouse.x >= (screen.frame.midX - compactW / 2.0)
-                   && mouse.x <= (screen.frame.midX + compactW / 2.0)
-            let inY = mouse.y >= (screen.frame.maxY - topInset - compactH)
+            let marginX: CGFloat = isFullScreen ? 24.0 : 0.0
+            let marginY: CGFloat = isFullScreen ? 12.0 : 0.0
+            
+            let inX = mouse.x >= (screen.frame.midX - compactW / 2.0 - marginX)
+                   && mouse.x <= (screen.frame.midX + compactW / 2.0 + marginX)
+            let inY = mouse.y >= (screen.frame.maxY - topInset - compactH - marginY)
             
             guard inX && inY else {
                 return
             }
         }
         
-        // If already hovering with a pending expand work item, don't restart/delay the timer
-        if isHovering && hoverWorkItem != nil {
+        unhoverWorkItem?.cancel()
+        unhoverWorkItem = nil
+        
+        if !isHovering {
+            withAnimation(IslandSpring.expand) {
+                isHovering = true
+            }
+        }
+        
+        // In fullscreen mode or if clickOnly trigger is configured, hover unhides compact notch without auto-expanding
+        if isFullScreen || SettingsManager.shared.expandTrigger == .clickOnly {
             return
         }
-        isHovering = true
+        
+        // If already hovering with a pending expand work item, don't restart/delay the timer
+        if hoverWorkItem != nil {
+            return
+        }
         
         let timeSinceCollapse = Date().timeIntervalSince(lastCollapseTime)
         let cooldownRemaining = max(0, collapseCooldown - timeSinceCollapse)
@@ -251,7 +271,25 @@ public class AppState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + totalDelay, execute: work)
     }
     
+    public func handleMouseLeaveCompact() {
+        guard !isExpanded else { return }
+        hoverWorkItem?.cancel()
+        hoverWorkItem = nil
+        
+        unhoverWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, !self.isExpanded else { return }
+            withAnimation(IslandSpring.collapse) {
+                self.isHovering = false
+            }
+        }
+        unhoverWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+    
     public func handleMouseLeave() {
+        unhoverWorkItem?.cancel()
+        unhoverWorkItem = nil
         isHovering = false
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
@@ -264,15 +302,10 @@ public class AppState: ObservableObject {
         collapse()
     }
     
-    /// Called by SwiftUI's .onHover when the cursor leaves the view bounds.
-    /// Only updates the hover-glow and cancels any pending expand-on-hover timer.
-    /// Does NOT collapse — the global mouse-movement monitor in WindowController
-    /// is the sole authority for collapsing, and its rect intentionally covers the
-    /// physical notch area above the island so moving into the notch never closes it.
     public func cancelHover() {
-        isHovering = false
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
+        handleMouseLeaveCompact()
     }
     
     public func handleDragEntered() {
