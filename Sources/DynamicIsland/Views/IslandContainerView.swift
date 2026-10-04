@@ -10,13 +10,7 @@ public struct IslandContainerView: View {
     @State private var isTrayDropTargeted = false
     @State private var dragExitWorkItem: DispatchWorkItem? = nil
     
-    private var isNotchMode: Bool {
-        switch settings.notchStyle {
-        case .auto: return detector.currentNotch.hasPhysicalNotch
-        case .notch: return true
-        case .floating: return false
-        }
-    }
+    private var isNotchMode: Bool { detector.isNotchMode }
     
     private var notchTopInset: CGFloat {
         if isNotchMode {

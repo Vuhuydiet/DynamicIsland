@@ -58,15 +58,8 @@ public class DynamicIslandHostingView: NSHostingView<IslandContainerView> {
     public override func hitTest(_ point: NSPoint) -> NSView? {
         let appState = AppState.shared
         let detector = NotchDetector.shared
-        let settings = SettingsManager.shared
-        
-        let isNotchMode: Bool
-        switch settings.notchStyle {
-        case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
-        case .notch: isNotchMode = true
-        case .floating: isNotchMode = false
-        }
-        
+        let isNotchMode = detector.isNotchMode
+
         // When hidden in fullscreen, allow hit-test only if hovering, expanded, or dragging
         if appState.isFullScreen && !appState.isHovering && !appState.isExpanded && !appState.isDraggingOver {
             let pasteboard = NSPasteboard(name: .drag)
@@ -391,13 +384,7 @@ public class WindowController: ObservableObject {
 
         let mouse = NSEvent.mouseLocation
         let detector = NotchDetector.shared
-        let settings = SettingsManager.shared
-        let isNotchMode: Bool
-        switch settings.notchStyle {
-        case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
-        case .notch: isNotchMode = true
-        case .floating: isNotchMode = false
-        }
+        let isNotchMode = detector.isNotchMode
 
         // Periodically refresh fullscreen state on mouse motion
         if Date().timeIntervalSince(self.lastFullScreenCheck) >= 0.5 {

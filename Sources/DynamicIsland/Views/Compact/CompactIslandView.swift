@@ -12,13 +12,7 @@ public struct CompactIslandView: View {
     // Drives the bell wobble on the compact notch
     @State private var bellWobble = false
 
-    private var isNotchMode: Bool {
-        switch settings.notchStyle {
-        case .auto: return detector.currentNotch.hasPhysicalNotch
-        case .notch: return true
-        case .floating: return false
-        }
-    }
+    private var isNotchMode: Bool { detector.isNotchMode }
 
     private var notchWidth: CGFloat {
         max(170.0, detector.currentNotch.notchWidth)
