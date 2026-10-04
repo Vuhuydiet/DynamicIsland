@@ -111,6 +111,44 @@ transient `MediaRemote` timeout during video playback does not make the UI flick
 `AudioOutputMonitor` acts as a corroborating signal — if the system is actively
 producing audio, the last known track is kept rather than cleared.
 
+### Browser registry
+
+The set of supported browsers lives in exactly one place, the `MediaBrowser` enum:
+`bundleIdentifier`, `applicationName` (what `tell application "…"` needs, and which
+is *not* derivable from the bundle id — Arc is the reason), and `tabScriptStyle`.
+
+| Why it is a type | The bug it prevented |
+| :--- | :--- |
+| `allCases` is exhaustive, and `detectionOrder` must equal it | A browser could be added, typed, and never consulted |
+| `MediaBrowser(bundleIdentifier:)` resolves exactly | A browser could be *detectable* but not *focusable* — the island reads a track and then fails to focus its tab, which reads as a dead button |
+| One `bundleIdentifier` each | The mapping was previously written out **four** times across detection, YouTube injection, tab focus, and an inline dictionary, with nothing checking they agreed |
+
+`tabScriptStyle` is the real per-browser API difference: Safari exposes
+`current tab of w` and `name of t`, while the Chromium family (Chrome, Brave, Arc,
+Edge) exposes `active tab index` and `title of t`. Modelling it as a closed enum
+replaces a string comparison on `"Safari"` that would have silently misrouted any
+future browser.
+
+### NowPlaying source classification
+
+`MediaSourceClassification.classify(bundleId:artist:title:)` turns a system
+NowPlaying report into a `MediaSource`. `MediaRemote` reports only a bundle
+identifier — no app name, no media kind — so this is a judgement call, and it is a
+pure function so it is unit-testable without a live `dlsym`ed framework pointer.
+
+Two behaviours in it are surprising enough to be worth knowing before "fixing" them:
+
+- **Chrome and Safari are classified `.youtube`, not `.browser`,** for *any* track.
+  The YouTube test includes `bundleId.contains("Chrome") || bundleId.contains("Safari")`,
+  so it fires even when the metadata never mentions YouTube. Pre-existing, pinned by
+  test.
+- **A known app outranks YouTube metadata.** The app check runs first, so a Music or
+  Spotify report is never reclassified as a web video.
+
+`MediaBrowser.bundleIdentifier` is also what this classification matches against,
+which is how a browser cannot be known to one part of the media path and unknown to
+another.
+
 ---
 
 ## 4. Playback State
@@ -192,10 +230,33 @@ permission.
 
 ## 7. The Visualizer
 
-`visualizerHeights` is a 7-element array driving the equalizer bars. A `0.12s`
-repeating timer animates the bars only while a track is actually playing, drawing
-random heights in `0.25...1.0` and smoothing them with the `IslandSpring.visualizer`
-spring. When nothing is playing the bars are idle rather than frozen mid-frame.
+> [!IMPORTANT]
+> **The equalizer is not an audio meter. It never was, and it is not pretending to
+> be one.** Read this before changing it.
+
+`visualizerHeights` is a 7-element array driving the equalizer bars, animated by a
+`0.12s` repeating timer and smoothed with the `IslandSpring.visualizer` spring. It
+advances a fixed rotating pattern while a track is playing, and sits at a flat idle
+value when nothing is playing.
+
+It does **not** represent audio levels. It previously used
+`CGFloat.random(in: 0.25...1.0)`, which fabricated system state — the island showed
+a live-looking meter driven by pure noise, implying it was reading the audio stream.
+`AGENTS.md` §2.7 forbids shipping a simulated stand-in for a capability the app does
+not have.
+
+Real output metering is genuinely unavailable, and staying that way is the decision:
+
+| Route | Why not |
+| :--- | :--- |
+| `kAudioDevicePropertyDeviceLevelMeterScalar` | Not exported by any public SDK header. Verified: absent from `AudioToolbox` and `CoreAudio` in the macOS SDK. |
+| `AVAudioEngine` tap | macOS has no `AVAudioSession`; there is no tap without an input/IO context this app does not own. |
+| `dlsym` on a private selector | The same fragility as the MediaRemote bridge, for a cosmetic animation. Not worth it. |
+| A dependency | The project has zero third-party dependencies (`AGENTS.md` §4). |
+
+The animation therefore reflects the one thing that *is* true — whether audio is
+playing — and claims nothing beyond it. `startVisualizer()` is the single place to
+change if real metering is ever wanted.
 
 The compact notch shows a compact visualizer via `RightEarToken.mediaVisualizer` —
 the right ear never shows a text label such as a track name or "Paused". See the

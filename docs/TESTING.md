@@ -22,7 +22,7 @@ importantly, why most of the app cannot.
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-Current state: **28 tests across 6 suites**, all passing, completing in well under a
+Current state: **45 tests across 8 suites**, all passing, completing in well under a
 second.
 
 > [!NOTE]
@@ -196,3 +196,42 @@ coordinator.onDragChanged(
 | No event is unmapped in any scheme | A new `SoundType` case cannot silently play silence |
 | The schemes remain distinct | `subtle` collapsing events onto one cue is deliberate, not a bug to "fix" |
 | Every mapped cue is a real system sound on this Mac | A typo is silent at runtime. Checked against `/System/Library/Sounds` on disk rather than `NSSound(named:)`, which is lenient enough to accept a name with stray whitespace |
+
+### `MediaBrowserTests` — *"Media browser registry"*
+
+| Test | Guards |
+| :--- | :--- |
+| Detection order covers every browser exactly once | A browser added, typed, and never consulted |
+| Bundle identifiers are unique | Lookup must be unambiguous |
+| Every bundle id round-trips through the lookup | A browser could be detectable but not focusable — a dead button |
+| An app that is not a browser resolves to nil | No guessing; `com.apple.Music` is not a browser |
+| Safari is the only browser with a different tab script vocabulary | A third vocabulary must be added to the enum, not smuggled in as a name |
+| No application name is blank | Each is interpolated into `tell application "…"` |
+| YouTube control injection is a subset of detectable browsers | The play/pause button must not act on an undetected tab |
+| Media keywords are non-empty, unique, quote-free | A quote would break the script for every browser |
+
+### `MediaSourceClassificationTests` — *"NowPlaying source classification"*
+
+| Test | Guards |
+| :--- | :--- |
+| A known app's bundle id decides the source | Music, Spotify, QuickTime, VLC |
+| IINA is matched loosely | Its id has changed across releases; an exact match would re-break it |
+| A known app wins even when the metadata says YouTube | The app chain is checked first |
+| Chrome and Safari are classified as YouTube, not browser | Surprising, pre-existing, and deliberately pinned |
+| A non-Chromium browser with no YouTube metadata is a generic web video | **This test found a real bug** — see below |
+| YouTube metadata alone is enough, whatever the app | And is case-insensitive |
+| An unrecognised app is system NowPlaying | With a real fallback artist |
+| Classification never overwrites a reported artist | The fallback applies only when the artist is blank |
+| An empty bundle id does not crash | Degrades to `.mediaRemote` |
+
+> [!IMPORTANT]
+> **`otherBrowsersAreGenericBrowser` found a live bug.** Browser detection matched a
+> hand-typed list of display-name fragments (`"Chrome"`, `"Safari"`, `"Brave"`,
+> `"Arc"`, `"Edge"`) against the bundle id. Three never matched anything: the real
+> ids are `com.brave.Browser`, `company.thebrowser.Browser`, and
+> `com.microsoft.edgemac`, none containing their fragment at that capitalisation. So
+> a Brave, Arc, or Edge tab was never reported as `.browser` — it fell through to
+> `.mediaRemote` and the island showed "Now Playing" with no source accent. Now
+> matched against `MediaBrowser.bundleIdentifier`. This is the argument for making
+> the policy pure and testing it: the bug was invisible because the only way to
+> observe it was to play a video in Brave.
