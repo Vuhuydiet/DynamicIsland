@@ -104,6 +104,24 @@ which macOS supports natively across Chrome, Edge, Brave, Arc, and Safari.
 4. **Browser active-media tab** — Chrome, Safari, Brave, Arc, and Edge, queried for
    the active tab's `<video>`/`<audio>` element and its title.
 
+Tiers 2 and 3 are driven by the `DesktopMediaApp` enum: each case carries its own
+script, fallback strings, field count, and `durationScale`. `parse(output:app:)` is
+pure and unit-tested, which matters because the parts most likely to be wrong quietly
+— field order, unit conversion, and the two state vocabularies — are invisible until
+someone plays a track in that app.
+
+> [!NOTE]
+> **Spotify reports duration in milliseconds; every other app reports seconds.** That
+> difference used to be a literal `/ 1000` *inside* Spotify's AppleScript string, so
+> from Swift it was invisible and untestable. It is now `durationScale`, plain data,
+> with a test asserting position is *not* scaled alongside it.
+>
+> The response is `|||`-delimited, and the splitting has a subtlety worth knowing: an
+> empty field makes AppleScript emit a **run** of pipes, and
+> `components(separatedBy:)` collapsing that run is what keeps the later fields on
+> the right indices. See the note in [`TESTING.md`](TESTING.md) before "simplifying"
+> it.
+
 Tiers are tried in order and the first hit wins. When a later poll finds nothing, the
 transition to `.empty` is **debounced** over several consecutive empty readings so a
 transient `MediaRemote` timeout during video playback does not make the UI flicker.

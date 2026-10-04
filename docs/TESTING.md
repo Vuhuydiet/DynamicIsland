@@ -22,7 +22,7 @@ importantly, why most of the app cannot.
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-Current state: **45 tests across 8 suites**, all passing, completing in well under a
+Current state: **59 tests across 9 suites**, all passing, completing in well under a
 second.
 
 > [!NOTE]
@@ -235,3 +235,42 @@ coordinator.onDragChanged(
 > matched against `MediaBrowser.bundleIdentifier`. This is the argument for making
 > the policy pure and testing it: the bug was invisible because the only way to
 > observe it was to play a video in Brave.
+
+### `DesktopMediaAppTests` — *"Desktop media app parsing"*
+
+The parsing for the direct-query tier (Music, Spotify, QuickTime, VLC) was inline and
+untestable before `DesktopMediaApp.parse(output:app:)` made it pure. These are the
+failures that are invisible until someone plays a track in that specific app.
+
+| Test | Guards |
+| :--- | :--- |
+| Bundle identifiers and sources are unique across apps | No app may claim another's source, or the accent and icon lie |
+| Only Spotify reports duration in milliseconds | The `/ 1000` was inside Spotify's script string, so the unit difference was invisible from Swift. A 3-minute track would show as 180000 s |
+| Only the music apps report an album | 6 fields vs 4; the document players carry a fixed label |
+| Every app's script names itself | The app name is interpolated into `tell application "…"` |
+| A Music response parses with all six fields in order | Field order |
+| A Spotify duration in milliseconds is converted to seconds | And that **position** is *not* also scaled |
+| A paused state is read as not playing, in both vocabularies | `"paused"` and `"false"` |
+| A document player reports true as playing | QuickTime returns a boolean string, not `"playing"` |
+| A QuickTime response fills artist and album from the app | A blank row is worse than naming the app |
+| A VLC response is always playing | Its script only runs when it is |
+| Blank title or artist falls back, without shifting fields | Uses captured interpreter output |
+| Field splitting treats a run of pipes as one delimiter | See the note below |
+| Stopped, empty, and truncated responses yield no track | A short row must not become a track with zeroed timings |
+| Non-numeric timings degrade to zero rather than dropping the track | Dropping it would flicker to "No Media Playing" mid-playback |
+
+> [!IMPORTANT]
+> **The empty-field case is subtle, and the obvious "fix" is wrong.**
+> `components(separatedBy:)` *drops* empty fields, which reads like a bug — until you
+> check what AppleScript actually emits. An empty field produces a **run** of pipes,
+> not a single delimiter, because `"" & "|||" & "x"` concatenates to `|||` and then
+> `x` while the preceding field is also empty. Verified against the real interpreter:
+> `"playing" & "|||" & "" & "|||" & "" & "|||" & "Album"` yields
+> `playing|||||||||Album`, which `components(separatedBy: "|||")` splits into exactly
+> `[playing, "", "", Album]` — the four fields the script meant.
+>
+> So collapsing the run is what keeps later fields on the right indices. A splitter
+> that consumed exactly three characters at a time would read four pipes as one
+> delimiter plus a stray `|`, shifting album and duration by one. The tests use
+> captured interpreter output rather than hand-written fixtures, because the
+> hand-written ones were wrong twice before being checked against a real run.
