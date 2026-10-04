@@ -423,6 +423,13 @@ public class TabDragCoordinator: ObservableObject {
     private var visibleOnly: Bool = true
     private var didPushCursor: Bool = false
     private let tapSlop: CGFloat = 6
+    /// The `slotStep` the gesture was measured with, kept so the release settle
+    /// can convert the accumulated index shift back into points.
+    private var currentSlotStep: CGFloat = 0
+    /// True between the release commit and the end of the settle spring. During
+    /// this window the pill is animating into its final slot, so it is exempt
+    /// from the "no animation while dragging" rule.
+    @Published public private(set) var isSettling: Bool = false
     
     public init() {}
     
@@ -441,6 +448,7 @@ public class TabDragCoordinator: ObservableObject {
             initialIndex = orderedTabs.firstIndex(of: tab) ?? 0
             currentTargetIndex = initialIndex
             hasMovedPastTapSlop = false
+            isSettling = false
             NSCursor.closedHand.push()
             didPushCursor = true
         }
@@ -452,6 +460,7 @@ public class TabDragCoordinator: ObservableObject {
         }
 
         let safeSlotStep = max(24, slotStep)
+        currentSlotStep = safeSlotStep
         let slotShift = Int((translation / safeSlotStep).rounded())
         let lastIndex = max(0, initialOrderedTabs.count - 1)
         let targetIndex = max(0, min(lastIndex, initialIndex + slotShift))
@@ -459,12 +468,20 @@ public class TabDragCoordinator: ObservableObject {
         if targetIndex != currentTargetIndex {
             currentTargetIndex = targetIndex
             SoundManager.shared.play(.click)
-            applyTargetOrder()
         }
 
-        // Keep the dragged item under the cursor after sibling views slide into new slots.
-        let slotDelta = CGFloat(currentTargetIndex - initialIndex) * safeSlotStep
-        dragOffset = translation - slotDelta
+        // ── Why nothing is reordered here ───────────────────────────────────
+        // Earlier revisions committed `customTabOrder` on every crossing. That made
+        // the dragged pill's screen position the sum of two independently-changing
+        // terms — its layout slot and `dragOffset` — which are only correct if they
+        // cancel to the pixel, every frame. They never quite did, and the mismatch
+        // presented as a flicker/rubber-band on each crossing.
+        //
+        // The order is now committed exactly once, on release. During the drag the
+        // shared layout is frozen, so `dragOffset` is the pill's ONLY displacement
+        // and it equals the raw gesture translation. Cursor tracking is therefore
+        // exact by construction rather than by two terms happening to agree.
+        dragOffset = translation
     }
 
     public func onDragEnded(tab: IslandTab, translation: CGFloat, onSelect: (IslandTab) -> Void) {
@@ -472,31 +489,66 @@ public class TabDragCoordinator: ObservableObject {
 
         if !hasMovedPastTapSlop {
             onSelect(tab)
-        } else if hasMovedPastTapSlop {
-            SoundManager.shared.play(.click)
+            if didPushCursor {
+                NSCursor.pop()
+                didPushCursor = false
+            }
+            resetState()
+            return
         }
+
+        SoundManager.shared.play(.click)
 
         if didPushCursor {
             NSCursor.pop()
             didPushCursor = false
         }
 
-        withAnimation(IslandSpring.tabSlide) {
-            draggingTab = nil
-            dragOffset = 0
-            hasMovedPastTapSlop = false
+        // Commit the new order with animations disabled, and in the SAME instant
+        // move the offset to the exact value that cancels the layout shift. The
+        // pill does not move on screen at this moment; the remaining distance is
+        // then sprung into its final slot.
+        let slotDelta = CGFloat(currentTargetIndex - initialIndex) * currentSlotStep
+        let settleStart = translation - slotDelta
+
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            applyTargetOrder()
+            isSettling = true
+            dragOffset = settleStart
         }
+
+        withAnimation(IslandSpring.tabSlide) {
+            dragOffset = 0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            self.resetState()
+        }
+    }
+
+    private func resetState() {
+        draggingTab = nil
+        dragOffset = 0
+        hasMovedPastTapSlop = false
+        isSettling = false
         initialOrderedTabs = []
         initialFullOrder = []
     }
     
+    /// Persists the new order. Called ONLY on release, from `onDragEnded`, which
+    /// already wraps it in an animation-disabling transaction so the dragged
+    /// pill's layout slot lands in the same instant that `dragOffset` is set to
+    /// the value that cancels the shift. The two therefore cancel exactly and
+    /// the pill appears not to move at the moment of commit.
     private func applyTargetOrder() {
         guard let tab = draggingTab else { return }
-        
+
         var moved = initialOrderedTabs.filter { $0 != tab }
         let insertAt = max(0, min(currentTargetIndex, moved.count))
         moved.insert(tab, at: insertAt)
-        
+
         let newOrder: [IslandTab]
         if visibleOnly {
             let movingIDs = Set(initialOrderedTabs.map(\.id))
@@ -510,10 +562,8 @@ public class TabDragCoordinator: ObservableObject {
         } else {
             newOrder = moved
         }
-        
-        withAnimation(IslandSpring.tabSlide) {
-            SettingsManager.shared.customTabOrder = newOrder.map(\.rawValue)
-        }
+
+        SettingsManager.shared.customTabOrder = newOrder.map(\.rawValue)
     }
 }
 
@@ -530,10 +580,13 @@ public struct IslandTabDragReorder: ViewModifier {
     public func body(content: Content) -> some View {
         let isDragging = coordinator.draggingTab == tab
         let isActivelyDragging = isDragging && coordinator.hasMovedPastTapSlop
+        // This pill's live slot. Siblings glide on this; the dragged pill must not.
+        let myIndex = orderedTabs.firstIndex(of: tab) ?? 0
         content
-            // Hide the dragged pill in its original slot so it only renders
-            // at the cursor (no ghost double-render of source slot).
-            .opacity(isActivelyDragging ? 0 : 1)
+            // The dragged pill stays fully VISIBLE and is carried by `dragOffset`,
+            // which is recomputed to pin the pill exactly under the cursor. It is
+            // deliberately NOT hidden: hiding it left only a moving gap plus a
+            // shuffling row of siblings, which read as flicker.
             .offset(
                 x: axis == .horizontal && isDragging ? coordinator.dragOffset : 0,
                 y: axis == .vertical && isDragging ? coordinator.dragOffset : 0
@@ -542,19 +595,31 @@ public struct IslandTabDragReorder: ViewModifier {
             // Lift effect only after the gesture has actually moved past tap slop —
             // prevents a click from briefly growing the pill before it snaps back.
             .scaleEffect(liftWhileDragging && isActivelyDragging ? 1.06 : 1.0)
-            // ── Flicker suppression ────────────────────────────────────────────
-            // The tab bar's HStack carries `.animation(.tabSlide, value: visibleTabs)`.
-            // That modifier is inherited by every descendant, so the moment a reorder
-            // commit changes `visibleTabs` it also springs *this* pill's `offset`.
-            // The pill is simultaneously re-assigning `dragOffset` to stay pinned under
-            // the cursor, so the two fight: the pill rubber-bands behind the pointer and
-            // oscillates on every slot crossing. Nulling the ambient animation for the
-            // duration of an active drag makes the offset apply instantly (1:1 tracking).
-            // The dragged pill's home slot is already `opacity(0)`, so the layout snap
-            // that this makes non-animated is invisible — only siblings glide.
+            // ── No animation of any kind while dragging ────────────────────────
+            // Every animated channel that reaches this view (the bar's
+            // `.animation(_:value: visibleTabs)`, the pill's `.animation(_:value:
+            // isActive)`, the reorder commit itself) also animates the `offset`
+            // above, because an animation attached to a view animates all of its
+            // animatable modifiers. The pill therefore lagged the pointer and
+            // rubber-banded backwards on every slot crossing.
+            //
+            // The rule is now absolute: while this pill is being dragged, NO
+            // animation may apply to it. `dragOffset` alone determines its
+            // position, so it tracks the cursor 1:1 and moves the instant the
+            // cursor moves — no waiting for a spring to settle. The spring is
+            // reserved for release, where the pill settles into its final slot.
             .transaction { transaction in
-                if isActivelyDragging { transaction.animation = nil }
+                if isDragging && !coordinator.isSettling { transaction.animation = nil }
             }
+            // Siblings glide into the slot the dragged pill vacates. This is
+            // suppressed for the dragged pill only, whose own `dragOffset` is the
+            // single source of truth for its position.
+            .animation(
+                (isDragging && !coordinator.isSettling)
+                    ? nil
+                    : (axis == .horizontal ? IslandSpring.tabSlide : IslandSpring.bouncy),
+                value: myIndex
+            )
             // Instant lift while dragging; spring back into the slot on release.
             // Passing `nil` while active stops the bouncy spring from lagging the pointer.
             .animation(isActivelyDragging ? nil : IslandSpring.bouncy, value: isActivelyDragging)

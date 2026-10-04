@@ -119,7 +119,18 @@ public struct FullHubExpandedView: View {
                     tabPill(tab, visibleTabs: visibleTabs, slotStep: slotStep)
                 }
             }
-            .animation(IslandSpring.tabSlide, value: visibleTabs)
+            // While a reorder drag is live this ambient animation is suppressed:
+            // it is inherited by every pill, so it would also spring the *dragged*
+            // pill's layout slot, fighting the instant `dragOffset` that keeps that
+            // pill pinned under the cursor and producing a one-slot-backwards
+            // flicker on every crossing. Sibling glide during a drag comes from
+            // the explicit per-pill `.animation(_:value: myIndex)` in
+            // `IslandTabDragReorder` instead; outside a drag this keeps the bar
+            // gliding for show/hide, width and plugin-load changes.
+            .animation(
+                dragCoordinator.draggingTab == nil ? IslandSpring.tabSlide : nil,
+                value: visibleTabs
+            )
             .padding(.horizontal, 40)
             .padding(.bottom, 5)
             .onAppear {
@@ -247,6 +258,9 @@ public struct FullHubExpandedView: View {
                 appState.activeTab = selectedTab
             }
         }
-        .animation(IslandSpring.tabSlide, value: isActive)
+        .animation(
+            dragCoordinator.draggingTab == nil ? IslandSpring.tabSlide : nil,
+            value: isActive
+        )
     }
 }
