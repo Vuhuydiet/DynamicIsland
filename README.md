@@ -35,10 +35,10 @@ A native, high-performance macOS Dynamic Island built in Swift and SwiftUI. It s
 ---
 
 ### 🎨 Configurable UI/UX Versions
-- **Independent Customization:** Choose preferred UI options independently for the **Closed Notch UI** and the **Opened Island UI** in Preferences (`⌘,` → **General**).
-- **Layout Shell Scope Rule:** Opened Island UI options govern how the island is structurally organized (header arrangement, notch spacing, tab bar positioning, and animation transitions).
-- **Universal Tab Content:** Individual tool views (`MediaView`, `DropShelfView`, `TimerView`, `ClipboardView`, `NotesView`) remain consistent, full-featured, and universal across all layout styles via `IslandTabContentView`.
-- **Interactive Visual Previews:** Live preview cards in Preferences showcase each option with interactive state toggles and scaled graphical representations.
+- **Closed Notch Customization:** Choose the compact notch appearance in Preferences (`⌘,` → **General**).
+- **Single Opened Island Shell:** The expanded island uses one layout — the full multi-tab workspace with a top header HUD, full-width sliding pill bar, and centered tool content.
+- **Universal Tab Content:** Individual tool views (`MediaView`, `DropShelfView`, `TimerView`, `ClipboardView`, `NotesView`) are shared through `IslandTabContentView`, so tool behaviour stays identical regardless of the active tab.
+- **Interactive Visual Previews:** Live preview cards in Preferences showcase the closed notch options with interactive state toggles and scaled graphical representations.
 
 ---
 

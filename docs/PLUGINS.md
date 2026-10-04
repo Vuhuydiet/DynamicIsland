@@ -255,8 +255,8 @@ Dynamic Island provides context-sensitive morphing between lightweight system to
 
 | View Type | Island Width | Content Height | Total Expanded Height |
 | :--- | :--- | :--- | :--- |
-| **System Tools** (Media, Timer, Notes, Clipboard) | `560 pt` (`490pt` in Compact HUD) | `170 pt` | `~262 pt` |
-| **Integrated Apps** (Messenger, Slack, ChatGPT) | **`740 pt`** (`660pt` in Compact HUD) | **`400 pt`** | **`~488 pt`** |
+| **System Tools** (Media, Timer, Notes, Clipboard) | `560 pt` | `170 pt` | `~262 pt` |
+| **Integrated Apps** (Messenger, Slack, ChatGPT) | **`740 pt`** | **`400 pt`** | **`~488 pt`** |
 
 ### Key Mechanics
 - **NSPanel Headroom:** `DynamicIslandPanel` uses an **`880 × 720 pt`** canvas, accommodating large viewports and the secondary split drop shelf without clipping.

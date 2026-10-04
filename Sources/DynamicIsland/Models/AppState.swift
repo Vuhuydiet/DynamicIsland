@@ -152,23 +152,16 @@ public class AppState: ObservableObject {
     public static let expandedWidth: CGFloat = 560.0
     
     public var expandedWidth: CGFloat {
-        let baseWidth: CGFloat
-        switch SettingsManager.shared.openedIslandStyle {
-        case .defaultStyle:   baseWidth = 560.0
-        case .bottomDeck:     baseWidth = 560.0
-        case .compactHUD:     baseWidth = 490.0
-        case .floatingCards:  baseWidth = 560.0
-        case .commandCenter:  baseWidth = 580.0
-        }
+        // Single opened shell: the base width is constant. Integrated app plugins
+        // still widen the island to their declared `preferredIslandWidth`.
+        let baseWidth = AppState.expandedWidth
         
         switch activeTab {
         case .messenger:
-            let appWidth = MessengerPlugin.shared.preferredIslandWidth ?? 740.0
-            return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(appWidth, 660.0) : appWidth
+            return MessengerPlugin.shared.preferredIslandWidth ?? 740.0
         case .plugin(let id):
             if let plugin = PluginManager.shared.plugin(for: id) {
-                let appWidth = plugin.preferredIslandWidth ?? 740.0
-                return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(appWidth, 660.0) : appWidth
+                return plugin.preferredIslandWidth ?? 740.0
             }
             return baseWidth
         default:
@@ -244,31 +237,18 @@ public class AppState: ObservableObject {
     public var currentContentHeight: CGFloat {
         switch activeTab {
         case .messenger:
-            let baseH = MessengerPlugin.shared.preferredContentHeight
-            return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(baseH, 360.0) : baseH
+            return MessengerPlugin.shared.preferredContentHeight
         case .plugin(let id):
-            let baseH = PluginManager.shared.plugin(for: id)?.preferredContentHeight ?? 400.0
-            return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(baseH, 360.0) : baseH
+            return PluginManager.shared.plugin(for: id)?.preferredContentHeight ?? 400.0
         default:
-            return SettingsManager.shared.openedIslandStyle == .compactHUD ? 165.0 : 170.0
+            return 170.0
         }
     }
     
     public func expandedHeight(isNotchMode: Bool, notchHeight: CGFloat) -> CGFloat {
         let notchTopInset: CGFloat = isNotchMode ? max(34.0, notchHeight) : 8.0
         let contentH = currentContentHeight
-        switch SettingsManager.shared.openedIslandStyle {
-        case .defaultStyle:
-            return notchTopInset + 38.0 + contentH + 16.0
-        case .bottomDeck:
-            return notchTopInset + 38.0 + contentH + 46.0 + 16.0
-        case .compactHUD:
-            return notchTopInset + 32.0 + contentH + 14.0
-        case .floatingCards:
-            return notchTopInset + 42.0 + contentH + 20.0
-        case .commandCenter:
-            return notchTopInset + 40.0 + contentH + 16.0
-        }
+        return notchTopInset + 38.0 + contentH + 16.0
     }
 
     public func totalExpandedHeight(isNotchMode: Bool, notchHeight: CGFloat) -> CGFloat {

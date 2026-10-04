@@ -41,27 +41,31 @@ public enum ClosedNotchStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Opened-island shell style.
+///
+/// The app now ships a single opened shell (`FullHubExpandedView`, the "Default"
+/// layout). The enum is deliberately kept as a one-case `CaseIterable` type rather
+/// than deleted so that:
+/// - the persisted `openedIslandStyle` preference key and its accessor remain valid;
+/// - a future shell can be added as a new case without a settings migration;
+/// - any Preferences gallery driven by `allCases` keeps working automatically.
+///
+/// Legacy values ("Bottom Deck", "Compact HUD", "Floating Cards", "Command Center")
+/// from earlier builds are still recognised by `init(rawValue:)` and coerced to
+/// `.defaultStyle`, so upgrading users with a stale saved preference are not reset
+/// to a blank value or left with an unparsable setting.
 public enum OpenedIslandStyle: String, CaseIterable, Identifiable {
-    case defaultStyle   = "Default"
-    case bottomDeck     = "Bottom Deck"
-    case compactHUD     = "Compact HUD"
-    case floatingCards  = "Floating Cards"
-    case commandCenter  = "Command Center"
-    
+    case defaultStyle = "Default"
+
     public var id: String { rawValue }
 
     public init?(rawValue: String) {
         switch rawValue {
         case "Default", "Option 1 (Default)", "Option 1":
             self = .defaultStyle
-        case "Bottom Deck":
-            self = .bottomDeck
-        case "Compact HUD":
-            self = .compactHUD
-        case "Floating Cards":
-            self = .floatingCards
-        case "Command Center":
-            self = .commandCenter
+        // Removed shells: fall back to Default rather than failing to parse.
+        case "Bottom Deck", "Compact HUD", "Floating Cards", "Command Center":
+            self = .defaultStyle
         default:
             return nil
         }

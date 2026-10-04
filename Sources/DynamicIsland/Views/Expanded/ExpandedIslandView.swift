@@ -38,6 +38,12 @@ struct LiquidGlassBackground: NSViewRepresentable {
 }
 
 // MARK: - ExpandedIslandView
+/// Hosts the opened island shell.
+///
+/// There is currently exactly one opened-island shell (`FullHubExpandedView`).
+/// `OpenedIslandStyle` is retained as a single-case enum so that the persisted
+/// `openedIslandStyle` preference and its accessor stay valid; if another shell is
+/// added later, extend the enum and this router together.
 public struct ExpandedIslandView: View {
     @ObservedObject var settings = SettingsManager.shared
 
@@ -46,14 +52,6 @@ public struct ExpandedIslandView: View {
             switch settings.openedIslandStyle {
             case .defaultStyle:
                 FullHubExpandedView()
-            case .bottomDeck:
-                BottomDeckExpandedView()
-            case .compactHUD:
-                CompactHUDExpandedView()
-            case .floatingCards:
-                FloatingCardsExpandedView()
-            case .commandCenter:
-                CommandCenterExpandedView()
             }
         }
     }

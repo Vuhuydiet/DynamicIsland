@@ -207,16 +207,13 @@ Closed Notch UI options dictate how the compact notch ears display information w
   - Routed dynamically via [`CompactIslandView.swift`](Sources/DynamicIsland/Views/Compact/CompactIslandView.swift).
 - **Opened Island Styles (`OpenedIslandStyle`)**:
   - `defaultStyle` ("Default"): The complete multi-tab workspace with top header HUD, full-width sliding pill bar, and centered tool content ([`FullHubExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/FullHubExpandedView.swift)).
-  - `bottomDeck` ("Bottom Deck"): Inverted layout with floating dock pill navigation anchored at the bottom edge for intuitive downward mouse flow ([`BottomDeckExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/BottomDeckExpandedView.swift)).
-  - `compactHUD` ("Compact HUD"): Low-profile streamlined cockpit (~490pt) with unified segmented control, ideal for smaller displays ([`CompactHUDExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/CompactHUDExpandedView.swift)).
-  - `floatingCards` ("Floating Cards"): VisionOS-inspired spatial glass architecture with elevated floating tab chips and recessed content card ([`FloatingCardsExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/FloatingCardsExpandedView.swift)).
-  - `commandCenter` ("Command Center"): Information-dense layout with live contextual badges (timer countdowns, playback equalizer, item counts) on tabs ([`CommandCenterExpandedView.swift`](Sources/DynamicIsland/Views/Expanded/CommandCenterExpandedView.swift)).
-  - Routed dynamically via [`ExpandedIslandView.swift`](Sources/DynamicIsland/Views/Expanded/ExpandedIslandView.swift).
+  - Routed via [`ExpandedIslandView.swift`](Sources/DynamicIsland/Views/Expanded/ExpandedIslandView.swift).
+  - **Single-shell policy**: the app ships exactly one opened-island shell. The `Bottom Deck`, `Compact HUD`, `Floating Cards`, and `Command Center` shells were removed. `OpenedIslandStyle` is intentionally retained as a one-case `CaseIterable` enum so the persisted `openedIslandStyle` preference key and any `allCases`-driven UI keep working, and so a future shell can be added as a new case without a settings migration. `init(rawValue:)` still parses the removed shells' legacy strings and coerces them to `.defaultStyle`, so upgrading users with a stale saved preference are not left with an unparsable setting. The matching Preferences gallery (`OpenedOptionPreviewCard`) and its per-shell preview bodies were deleted.
 - **Option Naming**:
   - Option names displayed to users must be clean and descriptive (e.g. `"Default"`), never prefixed with arbitrary numbers like `"Option 1"`.
 - **Settings Switchability & Previews**:
   - Configured independently via `SettingsManager.shared.closedNotchStyle` and `SettingsManager.shared.openedIslandStyle`, persisted to `UserDefaults`.
-  - Displayed in **General Preferences** with live interactive example cards (`ClosedOptionPreviewCard`, `OpenedOptionPreviewCard`) featuring live state toggles and scaled UI visual previews.
+  - **Closed Notch** is displayed in **General Preferences** with live interactive example cards (`ClosedOptionPreviewCard`) featuring live state toggles and scaled UI visual previews. Opened Island no longer needs a picker, since only one shell exists.
 
 ---
 
@@ -240,7 +237,7 @@ Closed Notch UI options dictate how the compact notch ears display information w
   - Configurable in Preferences (**Behavior & Tabs → Island Tabs & Order**) with interactive up/down reorder arrows (`chevron.up`, `chevron.down`), position indicators (`#1, #2, ...`), and a 1-click **Reset Order** action.
   - Persisted in `SettingsManager.shared.customTabOrder: [String]` under UserDefaults key `"customTabOrder"`.
   - Derived centrally via `IslandTab.allCases` calling `SettingsManager.shared.orderedTabs(from: defaultTabs)`. Any newly registered plugins or unlisted tabs are safely appended to the end.
-  - Dynamically updates all 5 opened island UI styles (`FullHub`, `Bottom Deck`, `Compact HUD`, `Floating Cards`, `Command Center`) with fluid `.animation(IslandSpring.tabSlide, value: visibleTabs)` physics.
+  - Dynamically updates the opened island's tab bar (`FullHub`) with fluid `.animation(IslandSpring.tabSlide, value: visibleTabs)` physics.
   - Distributed notifications: `com.dynamicisland.reorderTabs` (accepts comma-separated list of IDs) and `com.dynamicisland.resetTabOrder`.
 
 ### 4.4 Animation Architecture & Spring Physics (`IslandAnimations.swift`)
