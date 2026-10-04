@@ -519,44 +519,22 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                     return
                 }
                 
-                // Tier 2: Check Apple Music via AppleScript if running
-                if self.isAppRunning(bundleId: "com.apple.Music"),
-                   let musicTrack = self.fetchAppleMusicTrack() {
+                // Tiers 2-4: query each desktop app directly, in `DesktopMediaApp`
+                // order. This was five hand-written blocks that each named a bundle
+                // id and called its own `fetch…Track()` wrapper — the same order,
+                // the same shape, the same three lines of `DispatchQueue.main`
+                // boilerplate, restated per app. The wrappers existed only to hide
+                // the argument, and the ids were a fourth copy of the registry.
+                //
+                // Order matters and is unchanged: Music, then Spotify, then the
+                // document players. It is a policy, not an alphabetical accident, so
+                // it lives in one list that `DesktopMediaAppTests` can pin.
+                for app in DesktopMediaApp.allCases {
+                    guard self.isAppRunning(bundleId: app.bundleIdentifier) else { continue }
+                    guard let desktopTrack = self.fetchDesktopAppTrack(app) else { continue }
                     DispatchQueue.main.async {
                         self.emptyTrackStreak = 0
-                        self.applyTrackUpdate(musicTrack)
-                        self.isRefreshing = false
-                    }
-                    return
-                }
-                
-                // Tier 3: Check Spotify via AppleScript if running
-                if self.isAppRunning(bundleId: "com.spotify.client"),
-                   let spotifyTrack = self.fetchSpotifyTrack() {
-                    DispatchQueue.main.async {
-                        self.emptyTrackStreak = 0
-                        self.applyTrackUpdate(spotifyTrack)
-                        self.isRefreshing = false
-                    }
-                    return
-                }
-                
-                // Tier 4: Check Local Video Players (QuickTime, VLC)
-                if self.isAppRunning(bundleId: "com.apple.QuickTimePlayerX"),
-                   let qtTrack = self.fetchQuickTimeTrack() {
-                    DispatchQueue.main.async {
-                        self.emptyTrackStreak = 0
-                        self.applyTrackUpdate(qtTrack)
-                        self.isRefreshing = false
-                    }
-                    return
-                }
-                
-                if self.isAppRunning(bundleId: "org.videolan.vlc"),
-                   let vlcTrack = self.fetchVLCTrack() {
-                    DispatchQueue.main.async {
-                        self.emptyTrackStreak = 0
-                        self.applyTrackUpdate(vlcTrack)
+                        self.applyTrackUpdate(desktopTrack)
                         self.isRefreshing = false
                     }
                     return
@@ -718,10 +696,56 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         return DesktopMediaApp.parse(output: output, app: app)
     }
 
-    private func fetchAppleMusicTrack() -> MediaTrack? { fetchDesktopAppTrack(.music) }
-    private func fetchSpotifyTrack() -> MediaTrack? { fetchDesktopAppTrack(.spotify) }
-    private func fetchQuickTimeTrack() -> MediaTrack? { fetchDesktopAppTrack(.quickTime) }
-    private func fetchVLCTrack() -> MediaTrack? { fetchDesktopAppTrack(.vlc) }
+    /// Which desktop app, if any, a track came from.
+    ///
+    /// This replaces a chain that appeared **ten times** across the three control
+    /// methods:
+    ///
+    ///     if currentTrack.source == .music || currentTrack.bundleIdentifier == "com.apple.Music" { … }
+    ///     else if currentTrack.source == .spotify || currentTrack.bundleIdentifier == "com.spotify.client" { … }
+    ///     …
+    ///
+    /// Every one of those ten branches was a hand-maintained copy of the same
+    /// mapping, and the `||` made the lookup a *guess* — it accepted a track that
+    /// claimed `source == .music` even when its bundle id said Spotify, and sent
+    /// Music's `next track` to Spotify. The two fields disagree in practice: a
+    /// track from a browser carries `.youtube` or `.browser`, while a track read
+    /// from a desktop app carries that app's bundle id.
+    ///
+    /// Resolution is by bundle id first and source second. Matching on the id alone
+    /// means a wrong source can no longer be sent the wrong app's command.
+    private var owningApp: DesktopMediaApp? {
+        Self.desktopAppOwning(source: currentTrack.source, bundleIdentifier: currentTrack.bundleIdentifier)
+    }
+
+    /// The pure form of `owningApp`, so the policy is testable without a live track.
+    ///
+    /// Bundle id is authoritative because it is what the OS actually reported; the
+    /// source is only consulted when the id is absent or unrecognised, which
+    /// happens for MediaRemote-sourced tracks that never carried a bundle id.
+    ///
+    /// `internal` rather than `private` specifically so `MediaManagerTests` can pin
+    /// the id-wins rule without a running app or a live `MediaRemote` pointer —
+    /// which is the whole point of extracting it.
+    static func desktopAppOwning(
+        source: MediaSource,
+        bundleIdentifier: String?
+    ) -> DesktopMediaApp? {
+        // Three cases, in order, and the distinction between the last two matters:
+        //
+        // 1. A recognised bundle id names the app. Authoritative, because the id is
+        //    what the OS actually reported.
+        // 2. No id at all means nothing was reported, so the source is the only
+        //    evidence there is. This is the MediaRemote path.
+        // 3. An id we do *not* recognise means the track came from an app outside
+        //    this registry, so no desktop app owns it — even if the source happens
+        //    to name one. Falling through to the source here would address a player
+        //    that never reported the track, which is the bug the `||` chain had.
+        if let bundleIdentifier, !bundleIdentifier.isEmpty {
+            return DesktopMediaApp.allCases.first { $0.bundleIdentifier == bundleIdentifier }
+        }
+        return DesktopMediaApp.allCases.first { $0.source == source }
+    }
     
     // MARK: - Web Browsers (YouTube & Web Video Fallback)
     private func fetchWebVideoTrack(isAudioRunning: Bool) -> MediaTrack? {
@@ -1009,44 +1033,21 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
 
     public func togglePlayPause() {
         SoundManager.shared.play(.click)
-        
+
         let willPlay = !currentTrack.isPlaying
         var handled = false
-        
-        // 1. Targeted native player handling via AppleScript
-        if currentTrack.source == .music || currentTrack.bundleIdentifier == "com.apple.Music" {
-            let script = willPlay ? "tell application \"Music\" to play" : "tell application \"Music\" to pause"
-            if executeAppleScript(script) {
-                handled = true
-            }
-        } else if currentTrack.source == .spotify || currentTrack.bundleIdentifier == "com.spotify.client" {
-            let script = willPlay ? "tell application \"Spotify\" to play" : "tell application \"Spotify\" to pause"
-            if executeAppleScript(script) {
-                handled = true
-            }
-        } else if currentTrack.source == .quicktime || currentTrack.bundleIdentifier == "com.apple.QuickTimePlayerX" {
-            let script = """
-            tell application "QuickTime Player"
-                if (count of documents) > 0 then
-                    set doc to document 1
-                    if \(willPlay) then
-                        play doc
-                    else
-                        pause doc
-                    end if
-                end if
-            end tell
-            """
-            if executeAppleScript(script) {
-                handled = true
-            }
-        } else if currentTrack.source == .vlc || currentTrack.bundleIdentifier == "org.videolan.vlc" {
-            let script = willPlay ? "tell application \"VLC\" to play" : "tell application \"VLC\" to pause"
-            if executeAppleScript(script) {
-                handled = true
-            }
+
+        // 1. Targeted native player handling via AppleScript.
+        //
+        // The verb comes from the app's own `controls`, so which app is addressed and
+        // which command is sent are one lookup rather than four `||` branches that
+        // each had to name both. QuickTime's play/pause guards on document count
+        // inside the script, so pressing play with nothing open is a no-op.
+        if let controls = owningApp?.controls {
+            let script = willPlay ? controls.play : controls.pause
+            handled = executeAppleScript(script)
         }
-        
+
         // 2. System-wide MediaRemote command
         if !handled {
             let cmd: Int32 = willPlay ? MRCommand.play.rawValue : MRCommand.pause.rawValue
@@ -1069,97 +1070,76 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     }
     
     public func nextTrack() {
-        SoundManager.shared.play(.click)
-        var handled = false
-        
-        // 1. Native desktop players via AppleScript
-        if currentTrack.source == .music || currentTrack.bundleIdentifier == "com.apple.Music" {
-            if executeAppleScript("tell application \"Music\" to next track") {
-                handled = true
-            }
-        } else if currentTrack.source == .spotify || currentTrack.bundleIdentifier == "com.spotify.client" {
-            if executeAppleScript("tell application \"Spotify\" to next track") {
-                handled = true
-            }
-        } else if currentTrack.source == .vlc || currentTrack.bundleIdentifier == "org.videolan.vlc" {
-            if executeAppleScript("tell application \"VLC\" to next") {
-                handled = true
-            }
-        }
-        
-        // 2. System-wide MediaRemote next track command (like physical keyboard key)
-        if !handled {
-            let sent = sendMediaRemoteCommand(MRCommand.nextTrack.rawValue)
-            if sent {
-                handled = true
-            }
-        }
-        
-        // 3. YouTube DOM next button fallback
-        if !handled && currentTrack.source == .youtube {
-            triggerYouTubeButton(selector: ".ytp-next-button")
-            handled = true
-        }
-        
-        // 4. System media key fallback (NX_KEYTYPE_NEXT)
-        if !handled {
-            sendSystemMediaKey(key: 17)
-        }
-        
-        lastUserToggleTime = Date()
-        lastPositionUpdateTime = Date()
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.refreshMedia()
-        }
+        advanceTrack(direction: .next)
     }
-    
+
     public func previousTrack() {
+        advanceTrack(direction: .previous)
+    }
+
+    /// Which way to move within a playlist.
+    ///
+    /// This is the whole reason `nextTrack` and `previousTrack` can be one function.
+    /// The two were byte-for-byte identical apart from four values — the AppleScript
+    /// verb, the MediaRemote command, the YouTube CSS selector, and the media key —
+    /// so any future edit to the fallback order had to be made twice and a
+    /// half-applied edit produced a chain that went *forward* on some sources and
+    /// *backward* on others.
+    private enum TrackStep {
+        case next
+        case previous
+
+        var mediaRemoteCommand: MRCommand { self == .next ? .nextTrack : .previousTrack }
+
+        /// The YouTube player's own button. Injected into a background tab, so it is
+        /// only reached when the track is already known to be a web video.
+        var youTubeSelector: String { self == .next ? ".ytp-next-button" : ".ytp-prev-button" }
+
+        /// `NX_KEYTYPE_NEXT` / `NX_KEYTYPE_PREVIOUS`, the last-resort hardware event.
+        var systemMediaKey: Int32 { self == .next ? 17 : 18 }
+
+        func script(for controls: DesktopMediaApp.PlaybackControls) -> String? {
+            self == .next ? controls.next : controls.previous
+        }
+    }
+
+    private func advanceTrack(direction: TrackStep) {
         SoundManager.shared.play(.click)
         var handled = false
-        
-        // 1. Native desktop players via AppleScript
-        if currentTrack.source == .music || currentTrack.bundleIdentifier == "com.apple.Music" {
-            if executeAppleScript("tell application \"Music\" to previous track") {
-                handled = true
-            }
-        } else if currentTrack.source == .spotify || currentTrack.bundleIdentifier == "com.spotify.client" {
-            if executeAppleScript("tell application \"Spotify\" to previous track") {
-                handled = true
-            }
-        } else if currentTrack.source == .vlc || currentTrack.bundleIdentifier == "org.videolan.vlc" {
-            if executeAppleScript("tell application \"VLC\" to previous") {
-                handled = true
-            }
+
+        // 1. Native desktop players via AppleScript.
+        //
+        // QuickTime has no `next`/`previous` concept, so its `controls` are `nil`
+        // here and the chain falls through to MediaRemote — which is correct, and
+        // used to be an absent branch that read as an oversight.
+        if let script = owningApp?.controls.flatMap({ direction.script(for: $0) }) {
+            handled = executeAppleScript(script)
         }
-        
-        // 2. System-wide MediaRemote previous track command (like physical keyboard key)
+
+        // 2. System-wide MediaRemote command (like a physical keyboard key)
         if !handled {
-            let sent = sendMediaRemoteCommand(MRCommand.previousTrack.rawValue)
-            if sent {
-                handled = true
-            }
+            handled = sendMediaRemoteCommand(direction.mediaRemoteCommand.rawValue)
         }
-        
-        // 3. YouTube DOM prev button fallback
+
+        // 3. YouTube DOM button fallback
         if !handled && currentTrack.source == .youtube {
-            triggerYouTubeButton(selector: ".ytp-prev-button")
+            triggerYouTubeButton(selector: direction.youTubeSelector)
             handled = true
         }
-        
-        // 4. System media key fallback (NX_KEYTYPE_PREVIOUS)
+
+        // 4. System media key fallback
         if !handled {
-            sendSystemMediaKey(key: 18)
+            sendSystemMediaKey(key: direction.systemMediaKey)
         }
-        
+
         lastUserToggleTime = Date()
         lastPositionUpdateTime = Date()
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.refreshMedia()
         }
     }
-    
+
     public func seek(to seconds: Double) {
         lastUserToggleTime = Date()
         
@@ -1176,15 +1156,12 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         }
         
         // 3. Desktop player specific AppleScripts
-        switch currentTrack.source {
-        case .music:
-            _ = runAppleScript("tell application \"Music\" to set player position to \(seconds)")
-        case .spotify:
-            _ = runAppleScript("tell application \"Spotify\" to set player position to \(seconds)")
-        case .quicktime:
-            _ = runAppleScript("tell application \"QuickTime Player\" to set current time of document 1 to \(seconds)")
-        default:
-            break
+        //
+        // The seek verb comes from the owning app rather than a `switch` on source
+        // that restated the app name a fourth time. Apps with no `setPosition` —
+        // VLC — are simply skipped, which is the behaviour that switch already had.
+        if let setPosition = owningApp?.controls?.setPosition(seconds) {
+            _ = runAppleScript(setPosition)
         }
         
         currentTrack.position = seconds

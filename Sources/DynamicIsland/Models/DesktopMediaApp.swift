@@ -21,6 +21,17 @@ import Foundation
 /// count that is off by one, a state string that means "playing" in one app and
 /// "true" in another, a duration in the wrong unit.
 public enum DesktopMediaApp: String, CaseIterable, Sendable, Equatable {
+    // ⚠️ DECLARATION ORDER IS DETECTION PRIORITY.
+    //
+    // `MediaManager.refreshMedia` walks `allCases` in order and stops at the first
+    // app that reports a track, so this sequence *is* the tier order: Music, then
+    // Spotify, then the two document players. It replaces an explicit chain that
+    // happened to be in this order.
+    //
+    // With two apps playing at once, reordering these cases changes which track the
+    // island shows, with no compile error and no other visible symptom. That is why
+    // `DesktopMediaAppTests` pins the order explicitly rather than treating it as an
+    // implementation detail. Add new apps at the position their priority implies.
     case music
     case spotify
     case quickTime
@@ -153,6 +164,135 @@ public enum DesktopMediaApp: String, CaseIterable, Sendable, Equatable {
     /// or album, so those come from `fallbackArtist` and `albumLabel`.
     public var fieldCount: Int {
         albumLabel == nil ? 6 : 4
+    }
+
+    // MARK: - Playback control
+
+    /// The transport verbs this app understands, as AppleScript source.
+    ///
+    /// These used to be inline string literals in `MediaManager`'s three control
+    /// methods, which meant the same three facts were restated per verb per app:
+    /// `tell application "Music" to next track` and `tell application "VLC" to
+    /// next` are *not* the same command, and the difference was invisible — it read
+    /// as a copy-paste that happened to differ.
+    ///
+    /// Modelling it as an optional makes absence meaningful rather than a
+    /// fall-through. QuickTime has no `next track` concept at all, and the old
+    /// chain simply had no branch for it; here that is `controls == nil`, which the
+    /// compiler keeps honest if a new app is added without deciding what it can do.
+    public var controls: PlaybackControls? {
+        switch self {
+        case .music, .spotify:
+            // Both expose the player-scoped verbs, and both spell them the same way.
+            return PlaybackControls(
+                owner: self,
+                play: "tell application \"\(applicationName)\" to play",
+                pause: "tell application \"\(applicationName)\" to pause",
+                next: "tell application \"\(applicationName)\" to next track",
+                previous: "tell application \"\(applicationName)\" to previous track",
+                seekable: true
+            )
+        case .quickTime:
+            // A document player, not a playlist: it has documents, and it has no
+            // notion of a next track. `count of documents` guards the command so
+            // that pressing play with nothing open is a no-op rather than an error.
+            return PlaybackControls(
+                owner: self,
+                play: """
+                tell application "\(applicationName)"
+                    if (count of documents) > 0 then play document 1
+                end tell
+                """,
+                pause: """
+                tell application "\(applicationName)"
+                    if (count of documents) > 0 then pause document 1
+                end tell
+                """,
+                next: nil,
+                previous: nil,
+                seekable: true
+            )
+        case .vlc:
+            // VLC's verbs are the bare ones, with no `track` noun.
+            //
+            // `seekable` is deliberately false even though VLC can seek: this path
+            // is a *supplement* to the MediaRemote seek already sent above, which
+            // covers every player macOS knows about. Adding a second, untestable
+            // seek path for one app would be scope creep, not a fix — and it keeps
+            // the behaviour identical to the `switch` this replaced.
+            return PlaybackControls(
+                owner: self,
+                play: "tell application \"\(applicationName)\" to play",
+                pause: "tell application \"\(applicationName)\" to pause",
+                next: "tell application \"\(applicationName)\" to next",
+                previous: "tell application \"\(applicationName)\" to previous",
+                seekable: false
+            )
+        }
+    }
+
+    /// The AppleScript for one app's transport verbs.
+    ///
+    /// A verb is `nil` where the app has no such concept, which is a fact about
+    /// the app rather than a missing implementation — the distinction matters,
+    /// because an empty string here would be sent to the interpreter and fail at
+    /// runtime.
+    ///
+    /// `setPosition` is a *method* rather than a stored closure so the type stays
+    /// `Equatable` and so the seek script is a pure function of its argument —
+    /// which is what makes it testable, and a closure property would block both.
+    public struct PlaybackControls: Sendable, Equatable {
+        public var play: String
+        public var pause: String
+        /// `nil` when the app has no notion of a next track (document players).
+        public var next: String?
+        public var previous: String?
+        /// `nil` for apps with no seekable timeline in this vocabulary (VLC).
+        public var seekable: Bool
+
+        public init(
+            owner: DesktopMediaApp,
+            play: String,
+            pause: String,
+            next: String?,
+            previous: String?,
+            seekable: Bool
+        ) {
+            self.owner = owner
+            self.play = play
+            self.pause = pause
+            self.next = next
+            self.previous = previous
+            self.seekable = seekable
+        }
+
+        /// The script that seeks to `seconds`, or `nil` if this app cannot seek here.
+        ///
+        /// Kept beside the verbs so the app name is interpolated from the same
+        /// source as `play` and `pause`, rather than restated at the call site.
+        public func setPosition(_ seconds: Double) -> String? {
+            guard seekable else { return nil }
+            switch owner {
+            case .music, .spotify:
+                return "tell application \"\(owner.applicationName)\" to set player position to \(seconds)"
+            case .quickTime:
+                return """
+                tell application "\(owner.applicationName)"
+                    if (count of documents) > 0 then
+                        set current time of document 1 to \(seconds)
+                    end if
+                end tell
+                """
+            case .vlc:
+                // Unreachable while `seekable` is false, but stated rather than
+                // `unreachable`: adding a seekable VLC later must not silently
+                // produce an empty script.
+                return "tell application \"\(owner.applicationName)\" to set current time to \(seconds)"
+            }
+        }
+
+        /// Which app these verbs belong to.
+        public let owner: DesktopMediaApp
     }
 
     /// Whether this app reports an album of its own.

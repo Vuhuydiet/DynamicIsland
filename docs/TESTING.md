@@ -22,7 +22,7 @@ importantly, why most of the app cannot.
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-Current state: **59 tests across 9 suites**, all passing, completing in well under a
+Current state: **71 tests across 10 suites**, all passing, completing in well under a
 second.
 
 > [!NOTE]
@@ -258,19 +258,63 @@ failures that are invisible until someone plays a track in that specific app.
 | Field splitting treats a run of pipes as one delimiter | See the note below |
 | Stopped, empty, and truncated responses yield no track | A short row must not become a track with zeroed timings |
 | Non-numeric timings degrade to zero rather than dropping the track | Dropping it would flicker to "No Media Playing" mid-playback |
+| Detection queries apps in the order the old tier chain used | `refreshMedia` walks `allCases`, so enum declaration order *is* detection priority |
+| Every control verb addresses its own app and no other | The verbs were inline literals; a copy-paste addressing Music from Spotify's branch compiled fine and played the wrong track |
+| Document players have no next/previous | QuickTime has documents, not a queue — the old chain had no branch, which read as an oversight rather than a fact |
+| Only the document player guards on having a document open | Play with nothing loaded must be a no-op, not an error |
+| Seeking is offered only where supported, and embeds the time | VLC stays off deliberately; a rounded time would misplace the scrubber |
+| No control verb is blank | A `""` executes as an empty script and reports success while doing nothing |
 
 > [!IMPORTANT]
-> **The empty-field case is subtle, and the obvious "fix" is wrong.**
-> `components(separatedBy:)` *drops* empty fields, which reads like a bug — until you
-> check what AppleScript actually emits. An empty field produces a **run** of pipes,
-> not a single delimiter, because `"" & "|||" & "x"` concatenates to `|||` and then
-> `x` while the preceding field is also empty. Verified against the real interpreter:
-> `"playing" & "|||" & "" & "|||" & "" & "|||" & "Album"` yields
-> `playing|||||||||Album`, which `components(separatedBy: "|||")` splits into exactly
-> `[playing, "", "", Album]` — the four fields the script meant.
+> **The empty-field case is subtle, and the obvious reading of it is wrong.**
+> `components(separatedBy:)` looks like it *drops* empty fields, which reads like a
+> bug — until you check what AppleScript actually emits. An empty field produces a
+> **run** of pipes, not a single delimiter. Verified against the real interpreter
+> (`osascript`, not by reasoning):
 >
-> So collapsing the run is what keeps later fields on the right indices. A splitter
-> that consumed exactly three characters at a time would read four pipes as one
-> delimiter plus a stray `|`, shifting album and duration by one. The tests use
-> captured interpreter output rather than hand-written fixtures, because the
-> hand-written ones were wrong twice before being checked against a real run.
+> ```
+> "playing" & "|||" & "" & "|||" & "" & "|||" & "Album"  =>  playing|||||||||Album
+> ```
+>
+> That is **nine** pipes, and `components(separatedBy: "|||")` splits it into exactly
+> `[playing, "", "", Album]` — the four fields the script meant. The run collapsing
+> is what keeps later fields on the right indices, so position and duration do not
+> slide up one slot.
+>
+> A hand-rolled splitter that consumed exactly three characters per step was tried
+> here first and removed: it produces identical output on every captured row,
+> including a trailing empty field and the empty string, so it was ~10 lines of
+> hand-rolled string walking that could only introduce a bug `components` does not
+> have.
+>
+> **Build fixtures by joining fields, never by counting pipes.** The tests use a
+> `row(...)` helper that concatenates the same `& "|||" &` terms the script does.
+> The hand-written literals were wrong repeatedly, and wrong *quietly*: a fixture
+> written `"playing|||||Album"` is one field short — five pipes is one delimiter
+> plus a stray `|` — so it parses as four fields with the artist read as
+> `"|Album"`, and the assertion that looks like it is testing a fallback is
+> actually testing a corrupted string. Counting pipes by eye cannot be made safe;
+> joining fields cannot be miscounted.
+
+### `MediaManagerOwnershipTests` — *"Desktop app ownership resolution"*
+
+`MediaManager.desktopAppOwning(source:bundleIdentifier:)` decides which app a
+control command is addressed to. It replaced a chain that appeared ten times across
+the three control methods, each branch a hand-maintained copy of the same mapping.
+
+| Test | Guards |
+| :--- | :--- |
+| A known bundle id names the app, whatever the source claims | The old chain used `source == .music \|\| bundleId == "com.apple.Music"`, so a contradictory source won by branch order and Music's `next track` went to Spotify |
+| Every app's own id resolves back to that app | Ownership is total for the registry |
+| With no bundle id, the source is the only evidence | A MediaRemote track can arrive with no id; resolving to `nil` would silently drop control for it |
+| A browser or system NowPlaying track belongs to no desktop app | Must fall through to MediaRemote, not claim an app that is not playing |
+| An unknown bundle id does not fall back to a wrong app | The dangerous case: an app outside the registry must not be addressed to whichever app its metadata named |
+| Ownership is total: every resolution can accept the verb | Closes the dead end where a resolved app has no `controls` |
+
+> [!NOTE]
+> **Watch the `??` precedence when writing assertions against optionals.**
+> `controls?.play ?? ""` inside a `.contains(…)` call parses as
+> `controls?.(play ?? "")` and yields `Optional<Bool>`. Since `!Optional<Bool>` is
+> always `false`, `#expect(!(app.controls?.play ?? "").contains("x"))` passes no
+> matter what the string contains. Unwrap into a local first. This is not
+> hypothetical — it produced a test here that asserted nothing.

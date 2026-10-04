@@ -105,10 +105,18 @@ which macOS supports natively across Chrome, Edge, Brave, Arc, and Safari.
    the active tab's `<video>`/`<audio>` element and its title.
 
 Tiers 2 and 3 are driven by the `DesktopMediaApp` enum: each case carries its own
-script, fallback strings, field count, and `durationScale`. `parse(output:app:)` is
-pure and unit-tested, which matters because the parts most likely to be wrong quietly
-— field order, unit conversion, and the two state vocabularies — are invisible until
-someone plays a track in that app.
+script, fallback strings, field count, `durationScale`, and `controls` (its
+transport verbs). `parse(output:app:)` is pure and unit-tested, which matters
+because the parts most likely to be wrong quietly — field order, unit conversion,
+and the two state vocabularies — are invisible until someone plays a track in that
+app.
+
+> [!IMPORTANT]
+> **The declaration order of `DesktopMediaApp` *is* the detection priority.**
+> `refreshMedia` walks `allCases` and stops at the first app reporting a track, so
+> the enum reads Music → Spotify → QuickTime → VLC. Reordering the cases changes
+> which track wins when two apps play at once, with no compile error and no other
+> visible symptom. `DesktopMediaAppTests` pins the order for that reason.
 
 > [!NOTE]
 > **Spotify reports duration in milliseconds; every other app reports seconds.** That
@@ -119,8 +127,10 @@ someone plays a track in that app.
 > The response is `|||`-delimited, and the splitting has a subtlety worth knowing: an
 > empty field makes AppleScript emit a **run** of pipes, and
 > `components(separatedBy:)` collapsing that run is what keeps the later fields on
-> the right indices. See the note in [`TESTING.md`](TESTING.md) before "simplifying"
-> it.
+> the right indices. `DesktopMediaApp.fields(of:)` is the single splitter for that
+> wire format — the browser path uses it too, so the two AppleScript families cannot
+> disagree about what a separator means. See the note in
+> [`TESTING.md`](TESTING.md) before "simplifying" it.
 
 Tiers are tried in order and the first hit wins. When a later poll finds nothing, the
 transition to `.empty` is **debounced** over several consecutive empty readings so a
@@ -223,9 +233,45 @@ option, then `MRMediaRemoteSetElapsedTime`, then an app-specific AppleScript
 > Edge) routinely ignore command `2` (`kMRTogglePlayPause`) when paused. Choosing
 > the command from the state the UI already has is what makes web playback reliable.
 
+### Which app a command is addressed to
+
+`MediaManager.desktopAppOwning(source:bundleIdentifier:)` decides this, as a pure
+function so the policy is testable without a live track. It replaced a chain that
+appeared **ten times** across the three control methods:
+
+```swift
+if currentTrack.source == .music || currentTrack.bundleIdentifier == "com.apple.Music" { … }
+else if currentTrack.source == .spotify || currentTrack.bundleIdentifier == "com.spotify.client" { … }
+```
+
+Two rules, and the second is the subtle one:
+
+| Reported bundle id | Resolves to | Why |
+| :--- | :--- | :--- |
+| A recognised one | That app | The id is what the OS actually reported, so it is authoritative |
+| Absent or `""` | The app matching `source` | Nothing was reported; the source is the only evidence left |
+| Present but unrecognised | **`nil`** | The track came from outside the registry — no desktop app owns it |
+
+Falling through to `source` on an *unrecognised* id is the trap the old `||` fell
+into: a track from an app we do not know would be addressed to whichever app its
+metadata happened to name. `nil` instead means the caller falls through to
+MediaRemote and the media-key fallback knowingly.
+
+The verbs themselves are data on `DesktopMediaApp.controls`, not inline strings. Two
+details there are load-bearing rather than stylistic:
+
+- **A missing verb is `nil`, never `""`.** QuickTime has no `next track` concept, so
+  the chain falls through to MediaRemote. An empty string would be sent to the
+  interpreter and report success while doing nothing.
+- **VLC is not seekable here.** It can seek, but this path only *supplements* a
+  MediaRemote seek that already covers every player macOS knows about, so
+  `setPosition` returns `nil` and the behaviour matches the `switch` it replaced.
+
 **Opening the source** — focus the exact browser tab by URL where possible, then by
 track title, then activate the owning application by bundle id, then fall back to
-opening the app for the detected source.
+opening the app for the detected source. App selection resolves through
+`DesktopMediaApp` and `MediaBrowser` rather than repeating bundle ids, so a
+corrected id cannot leave one path stale.
 
 ---
 

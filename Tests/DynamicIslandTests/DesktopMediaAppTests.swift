@@ -231,4 +231,123 @@ struct DesktopMediaAppTests {
         #expect(track?.position == 0)
         #expect(track?.duration == 0)
     }
+
+    // MARK: Playback controls
+
+    @Test("Detection queries apps in the order the old tier chain used")
+    func detectionOrderMatchesTheFormerTierChain() {
+        // `refreshMedia` used to walk Music → Spotify → QuickTime → VLC in five
+        // hand-written `if` blocks. It is now a single loop over `allCases`, which
+        // makes the *declaration order of the enum* load-bearing: reordering the
+        // cases silently reorders detection priority, and two apps playing at once
+        // would report differently with no other visible change.
+        //
+        // This is the test that makes that dependency safe to carry.
+        #expect(DesktopMediaApp.allCases == [.music, .spotify, .quickTime, .vlc])
+    }
+
+    @Test("Every control verb addresses its own app and no other")
+    func controlVerbsAddressTheirOwnApp() {
+        // The bug this pins: the verbs used to be inline literals in three separate
+        // control methods, so a copy-paste that addressed Music while the branch was
+        // meant for Spotify compiled fine, passed CI, and sent the command to the
+        // wrong player. Each app's verbs must now name that app and only that app.
+        for app in DesktopMediaApp.allCases {
+            guard let controls = app.controls else { continue }
+            let verbs = [controls.play, controls.pause, controls.next, controls.previous]
+                .compactMap { $0 }
+            #expect(!verbs.isEmpty, "\(app) has no control verbs at all")
+            for verb in verbs {
+                #expect(
+                    verb.contains("\"\(app.applicationName)\""),
+                    "\(app) has a verb that does not address it: \(verb)"
+                )
+                for other in DesktopMediaApp.allCases where other != app {
+                    #expect(
+                        !verb.contains("\"\(other.applicationName)\""),
+                        "\(app)'s verb addresses \(other): \(verb)"
+                    )
+                }
+            }
+            #expect(controls.owner == app)
+        }
+    }
+
+    @Test("Document players have no next/previous, because they have no playlist")
+    func documentPlayersHaveNoTrackStepping() {
+        // QuickTime plays documents, not a queue. The old control chain simply had
+        // no branch for it, which read as an oversight; here it is a stated `nil`,
+        // so the caller falls through to MediaRemote knowingly.
+        let quickTime = DesktopMediaApp.quickTime.controls
+        #expect(quickTime != nil)
+        #expect(quickTime?.next == nil)
+        #expect(quickTime?.previous == nil)
+        // …but it does still play, pause, and seek.
+        #expect(quickTime?.play != nil)
+        #expect(quickTime?.pause != nil)
+        #expect(quickTime?.setPosition(10) != nil)
+
+        // The music apps are the opposite: a queue exists, so stepping must work.
+        for app in [DesktopMediaApp.music, .spotify] {
+            #expect(app.controls?.next != nil, "\(app) cannot skip tracks")
+            #expect(app.controls?.previous != nil, "\(app) cannot go back")
+        }
+    }
+
+    @Test("Only the document player guards its commands on having a document open")
+    func onlyDocumentPlayerGuardsOnOpenDocuments() {
+        // Pressing play with nothing loaded must be a no-op, not an error dialog.
+        // QuickTime is the only adapter that needs this: it addresses `document 1`,
+        // which does not exist when the app is closed.
+        //
+        // Unwrapped into locals first, deliberately. `controls?.play ?? ""` inside a
+        // `.contains(...)` call parses as `controls?.(play ?? "")`, yielding
+        // `Optional<Bool>` — and `!Optional<Bool>` is always `false`, so the
+        // assertion below would pass no matter what the verbs contained.
+        let quickTimePlay = DesktopMediaApp.quickTime.controls?.play ?? ""
+        #expect(quickTimePlay.contains("count of documents"))
+        let quickTimePause = DesktopMediaApp.quickTime.controls?.pause ?? ""
+        #expect(quickTimePause.contains("count of documents"))
+
+        // The music apps and VLC talk to the player directly and must not carry the
+        // guard, which would be a wasted round-trip on every button press.
+        for app in [DesktopMediaApp.music, .spotify, .vlc] {
+            let play = app.controls?.play ?? ""
+            #expect(!play.contains("count of documents"), "\(app) should not guard on documents")
+        }
+    }
+
+    @Test("Seeking is offered only by apps that can seek, and embeds the target time")
+    func seekIsOfferedOnlyWhereSupported() {
+        // VLC can seek, but this path supplements a MediaRemote seek that already
+        // covers it, so it stays off — matching the `switch` this replaced rather
+        // than quietly widening behaviour.
+        #expect(DesktopMediaApp.vlc.controls?.setPosition(42) == nil)
+
+        for app in [DesktopMediaApp.music, .spotify, .quickTime] {
+            let script = app.controls?.setPosition(42.5)
+            #expect(script != nil, "\(app) should support seek")
+            #expect(script?.contains("42.5") == true, "\(app) did not embed the time")
+            #expect(script?.contains("\"\(app.applicationName)\"") == true)
+        }
+        // A fractional time must survive interpolation — a rounded or truncated
+        // seek would land the scrubber in the wrong place.
+        #expect(DesktopMediaApp.music.controls?.setPosition(0.25)?.contains("0.25") == true)
+    }
+
+    @Test("No control verb is blank, since a blank script is sent to the interpreter")
+    func controlVerbsAreNonEmpty() {
+        // A `""` would be executed as an empty script and report success while doing
+        // nothing — the failure mode that made absence need to be `nil` rather than
+        // empty string.
+        for app in DesktopMediaApp.allCases {
+            guard let controls = app.controls else { continue }
+            #expect(!controls.play.isEmpty, "\(app) has a blank play verb")
+            #expect(!controls.pause.isEmpty, "\(app) has a blank pause verb")
+            if let next = controls.next { #expect(!next.isEmpty, "\(app) has a blank next verb") }
+            if let previous = controls.previous {
+                #expect(!previous.isEmpty, "\(app) has a blank previous verb")
+            }
+        }
+    }
 }
