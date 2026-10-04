@@ -6,7 +6,7 @@ public class SoundManager {
     
     private init() {}
     
-    public enum SoundType {
+    public enum SoundType: CaseIterable, Sendable {
         case expand
         case collapse
         case click
@@ -14,11 +14,55 @@ public class SoundManager {
         case timerAlert
         case notification
     }
-    
+
+    /// Resolves the system sound name for an event under a scheme.
+    ///
+    /// Extracted from `play(_:)` as a pure function so the scheme × event palette
+    /// can be unit-tested without a running app, without `UserDefaults`, and without
+    /// dispatching `NSSound` (AGENTS.md §3). The guard and the test surface are the
+    /// same code: `play` is now only a caller that honours the settings toggles and
+    /// then hands off here.
+    ///
+    /// The palettes are intentionally non-uniform — each scheme is a different
+    /// character, so the same event deliberately resolves to different cues per
+    /// scheme. `subtle` in particular collapses several events onto a single quiet
+    /// cue. That is a decision, and `SoundManagerMappingTests` pins it.
+    public static func systemSoundName(for type: SoundType, scheme: SoundScheme) -> String {
+        switch scheme {
+        case .classic:
+            switch type {
+            case .expand: return "Pop"
+            case .collapse: return "Tink"
+            case .click: return "Blow"
+            case .drop: return "Bottle"
+            case .timerAlert: return "Ping" // High-frequency crisp chime
+            case .notification: return "Glass"
+            }
+        case .modern:
+            switch type {
+            case .expand: return "Hero"
+            case .collapse: return "Morse"
+            case .click: return "Ping"
+            case .drop: return "Purr"
+            case .timerAlert: return "Ping"
+            case .notification: return "Hero"
+            }
+        case .subtle:
+            switch type {
+            case .expand: return "Tink"
+            case .collapse: return "Tink"
+            case .click: return "Pop"
+            case .drop: return "Tink"
+            case .timerAlert: return "Ping"
+            case .notification: return "Tink"
+            }
+        }
+    }
+
     public func play(_ type: SoundType) {
         let settings = SettingsManager.shared
         guard settings.soundEffectsEnabled else { return }
-        
+
         // Check per-event toggles
         switch type {
         case .expand:
@@ -34,37 +78,8 @@ public class SoundManager {
         case .notification:
             break
         }
-        
-        let soundName: String
-        switch settings.soundScheme {
-        case .classic:
-            switch type {
-            case .expand: soundName = "Pop"
-            case .collapse: soundName = "Tink"
-            case .click: soundName = "Blow"
-            case .drop: soundName = "Bottle"
-            case .timerAlert: soundName = "Ping" // High-frequency crisp chime
-            case .notification: soundName = "Glass"
-            }
-        case .modern:
-            switch type {
-            case .expand: soundName = "Hero"
-            case .collapse: soundName = "Morse"
-            case .click: soundName = "Ping"
-            case .drop: soundName = "Purr"
-            case .timerAlert: soundName = "Ping"
-            case .notification: soundName = "Hero"
-            }
-        case .subtle:
-            switch type {
-            case .expand: soundName = "Tink"
-            case .collapse: soundName = "Tink"
-            case .click: soundName = "Pop"
-            case .drop: soundName = "Tink"
-            case .timerAlert: soundName = "Ping"
-            case .notification: soundName = "Tink"
-            }
-        }
+
+        let soundName = Self.systemSoundName(for: type, scheme: settings.soundScheme)
         
         DispatchQueue.global(qos: .userInteractive).async {
             guard let sound = NSSound(named: soundName) else { return }
