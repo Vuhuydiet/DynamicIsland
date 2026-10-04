@@ -438,7 +438,8 @@ public class TabDragCoordinator: ObservableObject {
         translation: CGFloat,
         orderedTabs: [IslandTab],
         slotStep: CGFloat,
-        visibleOnly: Bool = true
+        visibleOnly: Bool = true,
+        fullOrder: @autoclosure () -> [IslandTab] = IslandTab.allCases
     ) {
         // ── Stale-drag recovery ──────────────────────────────────────────
         // A live drag on a *different* pill means the previous gesture's release
@@ -456,7 +457,12 @@ public class TabDragCoordinator: ObservableObject {
             draggingTab = tab
             self.visibleOnly = visibleOnly
             initialOrderedTabs = orderedTabs
-            initialFullOrder = IslandTab.allCases
+            // `@autoclosure` so the snapshot is resolved only when a drag actually
+            // starts, and only once. `IslandTab.allCases` is not free: it resolves
+            // through `PluginManager` and `MessengerPlugin` (a `WKWebView`), so it
+            // must stay off the hot path of every `onChanged` frame. Tests pass an
+            // explicit value to stay off the window server entirely.
+            initialFullOrder = fullOrder()
             initialIndex = orderedTabs.firstIndex(of: tab) ?? 0
             currentTargetIndex = initialIndex
             hasMovedPastTapSlop = false
@@ -575,26 +581,58 @@ public class TabDragCoordinator: ObservableObject {
     /// the pill appears not to move at the moment of commit.
     private func applyTargetOrder() {
         guard let tab = draggingTab else { return }
+        let newOrder = Self.reorderedTabs(
+            dragging: tab,
+            from: initialOrderedTabs,
+            to: currentTargetIndex,
+            visibleOnly: visibleOnly,
+            fullOrder: initialFullOrder
+        )
+        SettingsManager.shared.customTabOrder = newOrder.map(\.rawValue)
+    }
 
-        var moved = initialOrderedTabs.filter { $0 != tab }
-        let insertAt = max(0, min(currentTargetIndex, moved.count))
+    /// The pure order computation behind a reorder gesture.
+    ///
+    /// Extracted so the rule can be unit-tested without a running app, without
+    /// `UserDefaults`, and without `SoundManager` (AGENTS.md §0.4). It is a `static`
+    /// function on `Sendable` inputs, so it is the single place the "where does the
+    /// dragged tab land" answer is defined — `applyTargetOrder` is now just a
+    /// caller that persists the result.
+    ///
+    /// `fullOrder` is a **parameter**, not read from `IslandTab.allCases`, and that
+    /// is deliberate. `allCases` is not a pure enumeration: it resolves through
+    /// `SettingsManager` and `PluginManager`, and `defaultTabs` reads
+    /// `MessengerPlugin.shared.isEnabled`, which touches a `WKWebView` and therefore
+    /// requires a window server. Reading it from this function would make the whole
+    /// reorder rule untestable and would trap in a headless test process. The
+    /// caller passes the snapshot it already holds, so the value is captured once
+    /// per gesture and cannot change mid-commit.
+    ///
+    /// - When `visibleOnly` is true, only the visible subset is reshuffled and the
+    ///   result is woven back into `fullOrder`, leaving every hidden tab in its
+    ///   original position. That keeps a reorder of the visible bar from silently
+    ///   relocating tabs the user cannot see.
+    static func reorderedTabs(
+        dragging tab: IslandTab,
+        from orderedTabs: [IslandTab],
+        to targetIndex: Int,
+        visibleOnly: Bool,
+        fullOrder: [IslandTab]
+    ) -> [IslandTab] {
+        var moved = orderedTabs.filter { $0 != tab }
+        let insertAt = max(0, min(targetIndex, moved.count))
         moved.insert(tab, at: insertAt)
 
-        let newOrder: [IslandTab]
-        if visibleOnly {
-            let movingIDs = Set(initialOrderedTabs.map(\.id))
-            var iterator = moved.makeIterator()
-            newOrder = initialFullOrder.map { existing in
-                if movingIDs.contains(existing.id) {
-                    return iterator.next() ?? existing
-                }
-                return existing
-            }
-        } else {
-            newOrder = moved
-        }
+        guard visibleOnly else { return moved }
 
-        SettingsManager.shared.customTabOrder = newOrder.map(\.rawValue)
+        let movingIDs = Set(orderedTabs.map(\.id))
+        var iterator = moved.makeIterator()
+        return fullOrder.map { existing in
+            if movingIDs.contains(existing.id) {
+                return iterator.next() ?? existing
+            }
+            return existing
+        }
     }
 }
 
@@ -663,7 +701,13 @@ public struct IslandTabDragReorder: ViewModifier {
                             translation: translation,
                             orderedTabs: orderedTabs,
                             slotStep: slotStep,
-                            visibleOnly: visibleOnly
+                            visibleOnly: visibleOnly,
+                            // The bar already holds the authoritative full order in
+                            // `orderedTabs` for the settings list, and for the main
+                            // bar the visible list *is* the reorderable set. Either
+                            // way this avoids re-resolving `IslandTab.allCases`
+                            // (which reaches a `WKWebView`) on every frame.
+                            fullOrder: visibleOnly ? IslandTab.allCases : orderedTabs
                         )
                     }
                     .onEnded { value in

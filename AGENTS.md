@@ -18,6 +18,7 @@ This document captures architectural decisions, build instructions, design princ
    - [5.5 System HUD Telemetry Subsystem](#55-system-hud-telemetry-subsystem)
    - [5.6 Standardized Components & Plugin Architecture Subsystem](#56-standardized-components--plugin-architecture-subsystem)
 6. [🔄 State & Singletons Map](#6-state--singletons-map)
+7. [🧪 Testing](#7-testing)
 
 ---
 
@@ -97,6 +98,7 @@ These are the reference implementations to imitate:
 | Plugins get lifecycle callbacks + interaction audio on tab switch | Level 3 — `activeTab.didSet` dispatches; call sites cannot forget | `Models/AppState.swift` |
 | No y-overflow hit-test collapse at the screen's top pixel edge | Level 3 — hit-test omits any upper `y` bound | `App/WindowController.swift` |
 | Tab content identical across all opened-island shells | Level 3 — one `IslandTabContentView`, embedded by every shell | `Views/Expanded/IslandTabContentView.swift` |
+| Tab click always selects; a lost drag release cannot wedge the bar | Level 3 + 4 — selection owned by `onTapGesture` (not the drag), both drag entry points drop abandoned state, and `TabDragCoordinatorTests` fails the build if either regresses | `Views/Components/IslandComponents.swift`, `Tests/DynamicIslandTests/TabDragCoordinatorTests.swift` |
 
 ---
 
@@ -239,6 +241,11 @@ Closed Notch UI options dictate how the compact notch ears display information w
   - Derived centrally via `IslandTab.allCases` calling `SettingsManager.shared.orderedTabs(from: defaultTabs)`. Any newly registered plugins or unlisted tabs are safely appended to the end.
   - Dynamically updates the opened island's tab bar (`FullHub`) with fluid `.animation(IslandSpring.tabSlide, value: visibleTabs)` physics.
   - Distributed notifications: `com.dynamicisland.reorderTabs` (accepts comma-separated list of IDs) and `com.dynamicisland.resetTabOrder`.
+- **🚨 Selection and Reordering Are Separate Recognizers (code-enforced, not a convention)**:
+  - **Tap selects. Drag reorders.** Selection lives in the pill's own `onTapGesture`; it is **not** driven from `DragGesture.onEnded`. A `DragGesture(minimumDistance: 4)` reports nothing at all until the pointer travels 4pt, so on a still click it never fires — selection driven from there silently does nothing. This was a real bug (`17d114e`): a click only worked when the user's hand happened to jitter past 4pt. `.gesture` retains precedence on a real drag, so the split is unambiguous.
+  - **A drag whose release is lost must never wedge the bar.** `TabDragCoordinator`'s `onDragChanged` / `onDragEnded` are both guarded by `draggingTab == tab`. If a release is dropped (view rebuilt, mouse-up off-pill, island resized mid-gesture), `draggingTab` stays pinned and then *every other pill* fails both guards and cannot be selected at all. Both entry points therefore detect a live drag on a **different** pill and drop the abandoned state instead of returning silently. Do not "simplify" either guard back to a bare `guard draggingTab == tab { return }`.
+  - **The reorder rule is a pure function**: `TabDragCoordinator.reorderedTabs(dragging:from:to:visibleOnly:fullOrder:)`. `applyTargetOrder` only persists its result. `fullOrder` is a parameter — **not** `IslandTab.allCases` — because `allCases` resolves through `PluginManager` and `MessengerPlugin` (a `WKWebView`) and traps headless; see §7.2.
+  - Guarded by `Tests/DynamicIslandTests/TabDragCoordinatorTests.swift`.
 
 ### 4.4 Animation Architecture & Spring Physics (`IslandAnimations.swift`)
 - **Configurable Expansion Choreography Styles & VFX Engine (`ExpansionAnimationStyle` & `IslandVFXOverlayView`)**:
@@ -409,3 +416,38 @@ Closed Notch UI options dictate how the compact notch ears display information w
 | `SoundManager.shared` | Tactile audio feedback (click, expand, collapse, drop, timer alert) and **all** plugin audio via the sole `playPluginCue(_:pluginId:)` choke point |
 | `RightEarPolicy` | (static type, not a singleton) Closed-notch right-ear contract: `RightEarToken` token space + `token(for:)` sanitiser. See §0.3 and §0.6 |
 | `NotchDetector.shared` | Hardware notch measurement via `auxiliaryTopLeftArea` / `auxiliaryTopRightArea` |
+| `IslandFocusController.shared` | App main-menu installation (`installMainMenu()`) and the single island focus/activation choke point (`islandDidReceiveClick()`, `resignFocusIfIdle()`) |
+| `TabDragCoordinator` | (per-view, `@StateObject`, not a singleton) Tab-bar drag state machine. `reorderedTabs(...)` is the pure, unit-tested reorder rule; `draggingTab` must never survive a lost release. See §4.3 |
+
+---
+
+## 7. 🧪 Testing
+
+### 7.1 Running Tests
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
+```
+
+> [!IMPORTANT]
+> **Use the Xcode toolchain, not the Command Line Tools.** `DEVELOPER_DIR=/Library/Developer/CommandLineTools swift test` fails to even *load* the manifest (`Undefined symbols … PackageDescription`), and the same toolchain is why `Package.swift` must pin `swiftLanguageMode(.v5)` — under the default Swift 6 mode every `static let shared` singleton in the app is a `#MutableGlobalVariable` error. The shipping build is unaffected: it is `scripts/build_app.sh` (§1.3), a bare `swiftc` invocation, and it is still the only way to produce `/Applications/DynamicIsland.app`.
+
+### 7.2 What May Live In The Test Target
+
+Only **pure logic**. The test target has no window server, no app launch, and no `UserDefaults` sandbox you should rely on. A test that touches any of these traps (SIGTRAP, reported by SwiftPM as `exited with unexpected signal code 5`) or silently exercises nothing:
+
+| Trap | Why |
+| :--- | :--- |
+| `IslandTab.allCases` | Not a pure enumeration. Resolves `SettingsManager.orderedTabs(from: defaultTabs)` → `MessengerPlugin.shared.isEnabled` → a `WKWebView`. Needs a window server. |
+| `PluginManager.shared` / `PluginIconManager.shared` | Same chain: `defaultTabs` walks `activePlugins`. |
+| `AppState.shared` | Reaches `SettingsManager` and the plugin registry. |
+| `SoundManager.shared.play(_:)` | Reaches `SettingsManager` and dispatches `NSSound`. |
+
+**Consequence for production code:** if a rule is worth testing, it must accept its inputs as parameters rather than reading a global internally. `TabDragCoordinator.reorderedTabs(dragging:from:to:visibleOnly:fullOrder:)` takes `fullOrder` as an argument for exactly this reason — reading `IslandTab.allCases` inside it made the whole reorder rule untestable. `onDragChanged` takes it as an `@autoclosure` default so the hot path resolves it once per gesture, and tests inject a literal. This is §0.4's "expose a pure policy function" in practice: the guard and the test surface are the same code.
+
+### 7.3 Existing Suites
+
+| Suite | Guards |
+| :--- | :--- |
+| `TabDragCoordinatorTests` | Tab click always selects; a lost drag release cannot wedge the bar; the reorder rule is a permutation and never disturbs hidden tabs (§4.3) |
+| `TabReorderTests` | The pure `reorderedTabs(...)` rule: clamping, permutation safety, `visibleOnly` weaving |
