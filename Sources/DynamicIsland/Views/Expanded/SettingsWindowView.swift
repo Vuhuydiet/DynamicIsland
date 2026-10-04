@@ -1961,6 +1961,13 @@ public struct ClosedOptionPreviewCard: View {
 public struct PluginsSettingsTab: View {
     @ObservedObject var pluginManager = PluginManager.shared
     @ObservedObject var messenger = MessengerPlugin.shared
+    // `currentZoom` (and the other web session state) is `@Published` on
+    // `IslandWebController`, not on `MessengerPlugin`. Observing only the plugin
+    // left the zoom readout frozen at its initial value: `setZoom` really did
+    // apply `webView.pageZoom`, but no `objectWillChange` ever reached this view,
+    // so the percentage never re-rendered. Observing the controller itself is
+    // what makes the zoom buttons visibly respond.
+    @ObservedObject private var messengerWeb = MessengerPlugin.shared.webController
     @ObservedObject var appState = AppState.shared
     
     public init() {}
@@ -2080,7 +2087,7 @@ public struct PluginsSettingsTab: View {
                                 .buttonStyle(.bordered)
                                 .help("Zoom Out")
                                 
-                                Text(String(format: "%.0f%%", messenger.webController.currentZoom * 100))
+                                Text(String(format: "%.0f%%", messengerWeb.currentZoom * 100))
                                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                     .frame(width: 40)
                                 

@@ -58,6 +58,11 @@ public class IslandWebController: NSObject, ObservableObject, WKNavigationDelega
     public init(configuration: IslandWebConfiguration) {
         self.configuration = configuration
         super.init()
+        // Restore the user's saved zoom before the web view is built, so the
+        // restored value is what `setupWebView` applies as the initial
+        // `pageZoom` rather than the config default that would override it.
+        self.currentZoom = UserDefaults.standard.object(forKey: zoomDefaultsKey) as? Double
+            ?? configuration.zoomFactor
         setupWebView()
     }
     
@@ -152,7 +157,9 @@ public class IslandWebController: NSObject, ObservableObject, WKNavigationDelega
         web.uiDelegate = self
         web.customUserAgent = configuration.customUserAgent
         web.allowsBackForwardNavigationGestures = configuration.allowsBackForwardNavigationGestures
-        web.pageZoom = CGFloat(configuration.zoomFactor)
+        // Apply the *current* zoom (restored from UserDefaults in `init`), not the
+        // raw config default, otherwise the restore is immediately overwritten.
+        web.pageZoom = CGFloat(currentZoom)
         
         // Set transparent background to blend into Island glass
         web.setValue(false, forKey: "drawsBackground")
@@ -188,8 +195,21 @@ public class IslandWebController: NSObject, ObservableObject, WKNavigationDelega
         }
     }
     
-    @Published public var currentZoom: Double = 0.88
-    
+    /// Restored from `UserDefaults` on launch so a chosen zoom survives relaunch.
+    /// `configuration.zoomFactor` is only the initial default, not the source of
+    /// truth — without this, every launch silently reverted to 0.88 and the zoom
+    /// controls read as if they were not sticking.
+    ///
+    /// Assigned in `init` rather than in an initializer expression because it
+    /// depends on `configuration`, which is not yet set at that point.
+    @Published public var currentZoom: Double = 1.0
+
+    /// Per-site key, so two web plugins do not share one zoom setting.
+    private var zoomDefaultsKey: String {
+        let host = configuration.initialURL.host ?? configuration.initialURL.absoluteString
+        return "islandWebZoom_\(host)"
+    }
+
     public func openInExternalBrowser() {
         let target = webView.url ?? configuration.initialURL
         NSWorkspace.shared.open(target)
@@ -198,6 +218,7 @@ public class IslandWebController: NSObject, ObservableObject, WKNavigationDelega
     public func setZoom(_ zoom: Double) {
         currentZoom = max(0.50, min(1.50, zoom))
         webView.pageZoom = CGFloat(currentZoom)
+        UserDefaults.standard.set(currentZoom, forKey: zoomDefaultsKey)
     }
     
     public func zoomIn() {
