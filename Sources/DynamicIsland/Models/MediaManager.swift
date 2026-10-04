@@ -736,21 +736,19 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         // Ordered per `MediaBrowser.detectionOrder`. Each browser is a case in that
         // list, so adding one here is impossible to forget: `detectionOrder` is the
         // only enumeration, and `MediaBrowserTests` pins that it is exhaustive.
+        //
+        // No `switch` on `tabScriptStyle` here any more: the per-browser difference
+        // used to select between two near-identical query methods, which is how the
+        // Safari one ended up hardcoding its own app name and bundle id. The
+        // difference is now applied inside `queryBrowser`, so a browser is queried
+        // by being *listed*, not by being *wired up*.
         for browser in MediaBrowser.detectionOrder where track == nil {
             guard isAppRunning(bundleId: browser.bundleIdentifier) else { continue }
-            switch browser.tabScriptStyle {
-            case .chromium:
-                track = queryChromiumBrowser(
-                    browser: browser,
-                    keywords: MediaBrowser.mediaURLKeywords,
-                    isAudioRunning: isAudioRunning
-                )
-            case .safari:
-                track = querySafariBrowser(
-                    keywords: MediaBrowser.mediaURLKeywords,
-                    isAudioRunning: isAudioRunning
-                )
-            }
+            track = queryBrowser(
+                browser,
+                keywords: MediaBrowser.mediaURLKeywords,
+                isAudioRunning: isAudioRunning
+            )
         }
 
         if let found = track {
@@ -767,8 +765,30 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         }
     }
 
-    private func queryChromiumBrowser(browser: MediaBrowser, keywords: [String], isAudioRunning: Bool) -> MediaTrack? {
-        let conditions = keywords.map { "URL contains \"\($0)\"" }.joined(separator: " or ")
+    /// Asks one browser for its first tab whose URL matches a media keyword.
+    ///
+    /// This is the single place a browser is queried for a track. It used to be two
+    /// near-identical methods — `queryChromiumBrowser` and `querySafariBrowser` —
+    /// and the Safari copy hardcoded both `tell application "Safari"` and the
+    /// `com.apple.Safari` bundle id *inside its body*, while the Chromium copy read
+    /// both off the `MediaBrowser` it was handed. That is the exact split-brain
+    /// `MediaBrowser` exists to prevent: a Safari bundle id corrected in one place
+    /// but not the other would leave `MediaBrowserTests` green and Safari detection
+    /// silently broken.
+    ///
+    /// The one real difference between the two — Safari calls the title property
+    /// `name`, Chromium calls it `title` — is not a coincidence, it is
+    /// `tabScriptStyle`, and it is the reason that enum exists.
+    private func queryBrowser(
+        _ browser: MediaBrowser,
+        keywords: [String],
+        isAudioRunning: Bool
+    ) -> MediaTrack? {
+        let conditions = keywords
+            .map { "URL contains \"\($0)\"" }
+            .joined(separator: " or ")
+        // Safari exposes the title as `name`; the Chromium family as `title`.
+        let titleProperty = browser.tabScriptStyle == .safari ? "name" : "title"
         let script = """
         tell application "\(browser.applicationName)"
             if (count of windows) > 0 then
@@ -776,7 +796,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                     set m to (every tab of w whose \(conditions))
                     if (count of m) > 0 then
                         set t to item 1 of m
-                        return (title of t) & "|||" & (URL of t)
+                        return (\(titleProperty) of t) & "\(DesktopMediaApp.PIPE_DELIMITER)" & (URL of t)
                     end if
                 end repeat
             end if
@@ -784,31 +804,20 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         end tell
         """
         guard let output = runAppleScript(script), !output.isEmpty else { return nil }
-        return parseWebVideoOutput(output, bundleId: browser.bundleIdentifier, isAudioRunning: isAudioRunning)
-    }
-
-    private func querySafariBrowser(keywords: [String], isAudioRunning: Bool) -> MediaTrack? {
-        let conditions = keywords.map { "URL contains \"\($0)\"" }.joined(separator: " or ")
-        let script = """
-        tell application "Safari"
-            if (count of windows) > 0 then
-                repeat with w in windows
-                    set m to (every tab of w whose \(conditions))
-                    if (count of m) > 0 then
-                        set t to item 1 of m
-                        return (name of t) & "|||" & (URL of t)
-                    end if
-                end repeat
-            end if
-            return ""
-        end tell
-        """
-        guard let output = runAppleScript(script), !output.isEmpty else { return nil }
-        return parseWebVideoOutput(output, bundleId: "com.apple.Safari", isAudioRunning: isAudioRunning)
+        return parseWebVideoOutput(
+            output,
+            bundleId: browser.bundleIdentifier,
+            isAudioRunning: isAudioRunning
+        )
     }
 
     private func parseWebVideoOutput(_ raw: String, bundleId: String, isAudioRunning: Bool) -> MediaTrack? {
-        let parts = raw.components(separatedBy: "|||")
+        // Same wire format and the same splitter as the desktop adapters, so the two
+        // AppleScript families cannot drift into disagreeing about what a separator
+        // means. `parseWebVideoOutput` previously split on a bare `"|||"` literal
+        // while `DesktopMediaApp.fields` owned the documented behaviour for the very
+        // same delimiter.
+        let parts = DesktopMediaApp.fields(of: raw)
         guard parts.count >= 2 else { return nil }
         
         var title = parts[0]
@@ -1317,22 +1326,36 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         return res?.contains("ok") == true
     }
     
+    /// Opens whatever app most plausibly owns the current track.
+    ///
+    /// Both branches now resolve through the two registries rather than repeating
+    /// bundle ids. The desktop half used to spell out four ids inline that
+    /// `DesktopMediaApp` already owns, and the browser half hardcoded Chrome and
+    /// Safari — a third copy of the browser list, in a function that decides which
+    /// app to launch, and the one place a stale id is most visible: the button
+    /// silently opens the wrong app.
+    ///
+    /// Order is deliberate and unchanged: the app that actually produced the track
+    /// wins, then any running browser in `detectionOrder`, then Music as the
+    /// always-present default.
     public func openMediaApp() {
-        if isAppRunning(bundleId: "com.spotify.client") && currentTrack.source == .spotify {
-            openApp(bundleId: "com.spotify.client")
-        } else if isAppRunning(bundleId: "com.apple.Music") && currentTrack.source == .music {
-            openApp(bundleId: "com.apple.Music")
-        } else if isAppRunning(bundleId: "com.apple.QuickTimePlayerX") && currentTrack.source == .quicktime {
-            openApp(bundleId: "com.apple.QuickTimePlayerX")
-        } else if isAppRunning(bundleId: "org.videolan.vlc") && currentTrack.source == .vlc {
-            openApp(bundleId: "org.videolan.vlc")
-        } else if isAppRunning(bundleId: "com.google.Chrome") {
-            openApp(bundleId: "com.google.Chrome")
-        } else if isAppRunning(bundleId: "com.apple.Safari") {
-            openApp(bundleId: "com.apple.Safari")
-        } else {
-            openApp(bundleId: "com.apple.Music")
+        // 1. The desktop app that produced this exact source, if it is running.
+        if let app = DesktopMediaApp.allCases.first(where: { $0.source == currentTrack.source }),
+           isAppRunning(bundleId: app.bundleIdentifier) {
+            openApp(bundleId: app.bundleIdentifier)
+            return
         }
+
+        // 2. Any running browser, in detection order.
+        if let browser = MediaBrowser.detectionOrder.first(where: {
+            isAppRunning(bundleId: $0.bundleIdentifier)
+        }) {
+            openApp(bundleId: browser.bundleIdentifier)
+            return
+        }
+
+        // 3. Fall back to Music, which ships with the system.
+        openApp(bundleId: DesktopMediaApp.music.bundleIdentifier)
     }
     
     private func openApp(bundleId: String) {

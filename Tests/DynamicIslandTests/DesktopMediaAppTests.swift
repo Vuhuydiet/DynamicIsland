@@ -17,6 +17,20 @@ import Foundation
 @Suite("Desktop media app parsing")
 struct DesktopMediaAppTests {
 
+    /// Builds a delimited row exactly the way the AppleScript does: fields joined by
+    /// `& "|||" &`.
+    ///
+    /// This helper exists because hand-written pipe literals are a demonstrated
+    /// failure mode in this file. `"playing|||||Album"` looks like a blank field
+    /// between two delimiters, but five pipes is *one* delimiter plus a stray `|`,
+    /// so it splits as `["playing", "||Album", ...]` — one field short, with a
+    /// corrupted artist. Such a fixture does not fail loudly; it silently asserts
+    /// the wrong thing, which is worse than no test. Concatenating the same terms
+    /// the script concatenates cannot be miscounted.
+    private func row(_ fields: String...) -> String {
+        fields.joined(separator: DesktopMediaApp.PIPE_DELIMITER)
+    }
+
     // MARK: Identity invariants
 
     @Test("Bundle identifiers and sources are unique across apps")
@@ -142,11 +156,18 @@ struct DesktopMediaAppTests {
 
     @Test("Blank title or artist falls back to the app's own name, without shifting fields")
     func blankFieldsFallBack() {
-        // This row is verbatim AppleScript output for a track with no title and no
-        // artist, captured from the real interpreter: two empty fields make the
-        // concatenation emit a run of pipes, and the split still lines up.
+        // Built the way the script builds it — a chain of `& "|||" &` — rather than
+        // as a hand-counted run of pipes. An earlier version of this file wrote
+        // `"playing|||||Album"` and *failed*, because five pipes is one delimiter
+        // plus a stray `|`: it parsed as four fields with the album read as
+        // `"|Album"`. Counting pipes by eye does not work, and a literal like that
+        // is a silent-wrong-answer generator. Concatenation is the only form that
+        // cannot be miscounted.
+        //
+        // AppleScript emits 9 pipes here, which `components(separatedBy: "|||")`
+        // splits into the 4 fields the script meant (verified with `osascript`).
         let music = DesktopMediaApp.parse(
-            output: "playing|||||||||Album|||0|||100", app: .music
+            output: row("playing", "", "", "Album", "0", "100"), app: .music
         )
         #expect(music?.title == "Unknown Title")
         #expect(music?.artist == "Apple Music")   // reported artist was blank
@@ -155,8 +176,8 @@ struct DesktopMediaAppTests {
         #expect(music?.position == 0)
         #expect(music?.duration == 100)
 
-        // Verbatim concatenation: "playing" & "|||" & "" & "|||" & "0.0" & "|||" & "60.0"
-        let vlc = DesktopMediaApp.parse(output: "playing||||||0.0|||60.0", app: .vlc)
+        // "playing" & "|||" & "" & "|||" & "0.0" & "|||" & "60.0"  (VLC, blank title)
+        let vlc = DesktopMediaApp.parse(output: row("playing", "", "0.0", "60.0"), app: .vlc)
         #expect(vlc?.title == "Media File")
         #expect(vlc?.position == 0.0)
         #expect(vlc?.duration == 60.0)
@@ -164,21 +185,19 @@ struct DesktopMediaAppTests {
 
     @Test("Field splitting treats a run of pipes as one delimiter with empty fields between")
     func fieldSplittingCollapsesDelimiterRuns() {
-        // Recorded from the real interpreter, not reasoned about. AppleScript emits a
-        // *run* of pipes for an empty field: `"" & "|||" & "x"` is `|||x` when the
-        // preceding field is also empty, and four pipes when only one is.
+        // An empty field makes the script emit *consecutive* delimiters, so the
+        // splitter must preserve the empty field rather than drop it — dropping it
+        // would slide every later index up one and report duration as position.
         //
-        // `components(separatedBy:)` collapses such a run into one delimiter, which is
-        // what keeps the later fields on the right indices. A splitter that consumed
-        // exactly three characters at a time would read four pipes as a delimiter plus
-        // a stray `|`, shifting album and duration by one — the failure mode this
-        // comment exists to prevent.
-        #expect(DesktopMediaApp.fields(of: "a|||b|||c") == ["a", "b", "c"])
-        #expect(DesktopMediaApp.fields(of: "playing|||||||||Album|||0|||100")
+        // It is `components(separatedBy:)`, not a hand-rolled three-chars-at-a-time
+        // loop: on every row captured from the real interpreter the two agree
+        // exactly, so the hand-rolled version was pure risk with no benefit.
+        #expect(DesktopMediaApp.fields(of: row("a", "b", "c")) == ["a", "b", "c"])
+        #expect(DesktopMediaApp.fields(of: row("playing", "", "", "Album", "0", "100"))
             == ["playing", "", "", "Album", "0", "100"])
         // Edge behaviour: a trailing or leading delimiter yields an empty edge field.
-        #expect(DesktopMediaApp.fields(of: "a|||") == ["a", ""])
-        #expect(DesktopMediaApp.fields(of: "|||a") == ["", "a"])
+        #expect(DesktopMediaApp.fields(of: row("a", "")) == ["a", ""])
+        #expect(DesktopMediaApp.fields(of: row("", "a")) == ["", "a"])
         // A single or double pipe is NOT the delimiter and must not split.
         #expect(DesktopMediaApp.fields(of: "a||b") == ["a||b"])
         #expect(DesktopMediaApp.fields(of: "solo") == ["solo"])

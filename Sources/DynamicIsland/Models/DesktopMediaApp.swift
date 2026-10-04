@@ -158,25 +158,43 @@ public enum DesktopMediaApp: String, CaseIterable, Sendable, Equatable {
     /// Whether this app reports an album of its own.
     private var reportsAlbum: Bool { albumLabel == nil }
 
-    /// Splits a delimited response into its fields.
+    /// Splits a delimited response into its fields, **preserving empty fields**.
     ///
-    /// `components(separatedBy:)` is correct here, and the reason is worth recording
-    /// because the obvious-looking alternative is wrong.
+    /// `String.components(separatedBy:)` looks like the obvious choice and it looks
+    /// wrong here, because a reader can reasonably assume it *drops* empty fields.
+    /// It does not, and that is why this wrapper exists: the behaviour is
+    /// load-bearing and non-obvious, so it is stated and pinned rather than left
+    /// for the next reader to re-litigate.
     ///
-    /// An empty title or artist makes AppleScript emit *consecutive* delimiters —
-    /// `"" & "|||" & "" & "|||"` produces four pipes, not six. Verified against the
-    /// real interpreter: `"playing" & "|||" & "" & "|||" & "" & "|||" & "Album"`
-    /// yields `playing|||||||||Album`, which `components(separatedBy: "|||")` splits
-    /// into exactly `[playing, "", "", Album]` — the four fields the script meant.
+    /// An empty title or artist makes AppleScript emit *consecutive* delimiters.
+    /// Verified against the real interpreter (`osascript`, not by reasoning):
     ///
-    /// A hand-rolled splitter that consumed exactly three characters at a time would
-    /// instead see `playing` + `|||` + `||Album` and produce a *four*-field result
-    /// with `||Album` as the album, shifting every later index. Empty fields are the
-    /// normal case, not an edge case, and the run-collapsing behaviour is exactly
-    /// what makes them line up.
+    ///     "playing" & "|||" & "" & "|||" & "" & "|||" & "Album"
+    ///         => playing|||||||||Album      (9 pipes, not 6)
+    ///
+    /// and `components(separatedBy: "|||")` splits that into exactly
+    /// `[playing, "", "", Album]` — the four fields the script meant. Empty fields
+    /// are the *normal* case for an untitled file or an untagged track, not an edge
+    /// case, and preserving them is what keeps position and duration on their own
+    /// indices instead of sliding up one slot.
+    ///
+    /// A hand-rolled three-chars-at-a-time splitter was tried here first and removed:
+    /// it produces identical output on every captured row (including a trailing empty
+    /// field and the empty string), so it was ~10 lines of hand-rolled string walking
+    /// that could only ever introduce a bug `components` does not have. The
+    /// hand-piped fixtures in `DesktopMediaAppTests` are built by concatenating the
+    /// same `& "|||" &` terms the script uses, so a future reader cannot repeat the
+    /// mistake of writing a literal with too few pipes.
     static func fields(of output: String) -> [String] {
-        output.components(separatedBy: "|||")
+        output.components(separatedBy: PIPE_DELIMITER)
     }
+
+    /// The delimiter every AppleScript response in this subsystem uses.
+    ///
+    /// One constant, so the script that emits a row and the code that splits it
+    /// cannot drift apart. Long enough to be unlikely inside a track title, and a
+    /// run of it collapses cleanly so consecutive empty fields still split.
+    static let PIPE_DELIMITER = "|||"
 
     /// Parses a `|||`-delimited AppleScript response into a track.
     ///
