@@ -65,7 +65,7 @@ public struct ClassicCompactLeftEarView: View {
                     .font(IslandFont.iconSmall)
                     .foregroundColor(mediaManager.currentTrack.source.accentColor)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if settings.isTabVisible(.media) && mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
+            } else if settings.isTabVisible(.media) && !mediaManager.currentTrack.isEmpty {
                 Image(systemName: mediaManager.currentTrack.source.iconName)
                     .font(IslandFont.iconSmall)
                     .foregroundColor(mediaManager.currentTrack.source.accentColor.opacity(0.85))
@@ -144,7 +144,7 @@ public struct ClassicCompactRightEarView: View {
         } else if settings.isTabVisible(.media) && mediaManager.currentTrack.isPlaying {
             resolved = .mediaVisualizer
 
-        } else if settings.isTabVisible(.media) && mediaManager.currentTrack.source != .none && mediaManager.currentTrack.title != "No Media Playing" {
+        } else if settings.isTabVisible(.media) && !mediaManager.currentTrack.isEmpty {
             resolved = .mediaPauseGlyph
 
         } else if !dropShelfManager.items.isEmpty {
