@@ -13,9 +13,6 @@ public struct SystemStats {
     public var diskUsedGB: Double = 0.0
     public var diskTotalGB: Double = 0.0
     public var diskPercent: Int = 0
-    public var wifiName: String = "Connected"
-    public var isMuted: Bool = false
-    public var systemVolume: Double = 0.5
 }
 
 public class SystemMonitor: ObservableObject {
@@ -48,8 +45,19 @@ public class SystemMonitor: ObservableObject {
             let (usedRam, totalRam) = self.getMemoryUsage()
             let (batteryPct, charging, plugged) = self.getBatteryInfo()
             let (diskUsed, diskTotal, diskPct) = self.getDiskUsage()
-            let vol = self.getSystemVolume()
-            
+            // NB: the system output volume is deliberately NOT sampled here.
+            //
+            // Every other statistic here is a cheap syscall (`host_processor_info`,
+            // `host_statistics64`, `IOPSCopyPowerSourcesInfo`, `statfs`). Volume was
+            // the odd one out: it has no cheap API, so it needed an
+            // `NSAppleScript` — measured at ~12.5 ms per execution, and it blocks
+            // the calling thread for the duration. On this 2-second timer that is
+            // roughly 22 seconds of script execution per hour, forever, to compute a
+            // value no view ever rendered and no control ever wrote back.
+            //
+            // There is no volume control or readout anywhere in the UI, so the
+            // capability was removed outright rather than merely un-polled: the
+            // cheapest correct fix for "nothing consumes this" is to delete it.
             DispatchQueue.main.async {
                 self.stats.cpuUsage = cpu
                 self.stats.ramUsedGB = usedRam
@@ -60,7 +68,6 @@ public class SystemMonitor: ObservableObject {
                 self.stats.diskUsedGB = diskUsed
                 self.stats.diskTotalGB = diskTotal
                 self.stats.diskPercent = diskPct
-                self.stats.systemVolume = vol
             }
         }
     }
@@ -173,51 +180,5 @@ public class SystemMonitor: ObservableObject {
             return (usedGB, totalGB, pct)
         }
         return (0.0, 0.0, 0)
-    }
-    
-    // MARK: - Volume Controls
-    private func getSystemVolume() -> Double {
-        var error: NSDictionary?
-        let script = "output volume of (get volume settings)"
-        if let output = NSAppleScript(source: script)?.executeAndReturnError(&error).stringValue,
-           let volInt = Double(output) {
-            return volInt / 100.0
-        }
-        return 0.5
-    }
-    
-    public func setSystemVolume(_ val: Double) {
-        let pct = Int(val * 100.0)
-        let script = "set volume output volume \(pct)"
-        _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-        stats.systemVolume = val
-    }
-    
-    // MARK: - Quick Actions
-    public func lockScreen() {
-        SoundManager.shared.play(.click)
-        let script = "tell application \"System Events\" to keystroke \"q\" using {control down, command down}"
-        _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-    }
-    
-    public func sleepDisplay() {
-        SoundManager.shared.play(.click)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
-        process.arguments = ["displaysleepnow"]
-        try? process.run()
-    }
-    
-    public func toggleMute() {
-        SoundManager.shared.play(.click)
-        let script = "set volume output muted not (output muted of (get volume settings))"
-        _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-        stats.isMuted.toggle()
-    }
-    
-    public func emptyTrash() {
-        SoundManager.shared.play(.click)
-        let script = "tell application \"Finder\" to empty trash"
-        _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
     }
 }
