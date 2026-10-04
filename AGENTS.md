@@ -120,6 +120,9 @@ reaches for a global means a refactor, not a test.
   would need to reach both build paths to mean anything.
 - **Adding or removing a framework?** Update the build script and the framework
   inventory together, or the two will disagree.
+- **`main` is the branch of record, and it is public.** There is no CI and no review
+  gate on it, so an unreviewed push is immediately the released artifact. Never
+  force-push it; see §6.3.
 
 ---
 
@@ -216,3 +219,41 @@ Set `DEVELOPER_DIR` if invoking the toolchain by hand (§4).
 > suite is a claim about logic; a screenshot is evidence about the app. When asked
 > to verify a change, produce the running app and show it, and say plainly what
 > cannot be checked headlessly rather than implying full coverage.
+
+**6.3 Confirmed-working changes get committed and pushed.** The loop is: implement →
+§6.2 build and show → *the user confirms it works* → commit and push.
+
+```bash
+git add -A && git commit -m "…" && git push origin main
+```
+
+The user's confirmation is the gate, not a formality. A test suite proves the policy
+functions; only the user can confirm the *feature* does what they meant. Committing
+before they have looked at it banks work nobody has accepted, and pushing a
+half-understood change to a public repository makes it the code everyone sees. Wait
+for the confirmation; do not treat silence as approval, and do not ask again if it
+has already been given.
+
+The order within a push is load-bearing:
+
+- **`git add -A`, then read what is about to go out** (`git diff --cached --stat`)
+  before committing. A public repository is not a scratch pad, and `-A` will happily
+  stage a stray `.zip`, a build product, or someone's scratch file. `.gitignore`
+  covers `build/`, `*.zip`, and `tmp/`, but a *tracked* file is never ignored —
+  check the diff, don't trust the list.
+- **Never `push --force` on `main`.** This branch has no CI and no review, so the only
+  thing standing between a mistake and a permanent public history is that rule. If a
+  push is rejected, it is almost always because someone else moved `main` — so fetch
+  and rebase, and push again. `push --force-with-lease` is not an acceptable
+  substitute; it is a force push that happens to check, which is a guard against
+  clobbering *other* work while still rewriting your own.
+- **Say what was pushed** — the SHA range and the commit subjects — so the user can
+  see the boundary of what they just approved. If the range contains commits from
+  *before* the confirmed feature, say that too rather than implying the confirmation
+  covered them.
+
+There is no release or tag step here. Pushing to `main` does **not** create or update
+a GitHub release — `v0.1.0` is a separate, manually cut artifact, and cutting a new
+one is a deliberate act, not a side effect of a push. §6.1 keeps refactors separable
+for the same reason: a change that lands on its own stays reviewable after the fact,
+and a release that bundles ten commits is a release nobody can reason about.
