@@ -41,7 +41,7 @@ second.
 | **Manifest** | none — `scripts/build_app.sh` | `Package.swift` |
 | **Toolchain** | Command Line Tools | **Xcode** |
 | **Command** | `./scripts/build_app.sh` | `swift test` |
-| **Produces** | `~/Applications/DynamicIsland.app` | test results |
+| **Produces** | `/Applications/DynamicIsland.app` | test results |
 
 Two consequences that are easy to trip over:
 

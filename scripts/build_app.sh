@@ -99,31 +99,48 @@ chmod +x "$MACOS_DIR/$APP_NAME"
 rm -rf "$DIR/$APP_NAME.app"
 cp -R "$APP_BUNDLE" "$DIR/$APP_NAME.app"
 
-# Install to ~/Applications, NOT /Applications.
+# Install to /Applications, and nowhere else.
 #
-# The home copy is the one that gets launched and observed, so it must be the same
-# bundle that was just built. Installing to /Applications instead would leave two
-# copies of the same bundle id on the machine, and which one Launch Services picks
-# is not something a test session should depend on.
-#
-# ~ is expanded explicitly rather than written as a literal ~ inside quotes, which
-# would be a path that does not exist. $HOME in double quotes is already expanded,
-# so this line is safe as written.
-INSTALL_DIR="$HOME/Applications"
-mkdir -p "$INSTALL_DIR"
+# This is the single copy that gets launched and observed, so it must be the bundle
+# that was just built. Installing anywhere else as well would put two copies of the
+# same bundle id on the machine, and which one Launch Services resolves is not
+# something a test session should depend on — a stale winner makes a correct change
+# look like it did nothing.
+INSTALL_DIR="/Applications"
+
+# Installing must not depend on the caller's shell or prompt for a password: an
+# automated run has nobody to type one. So probe writability first and fail loudly
+# with the exact command to run, rather than falling back to a second location —
+# a fallback would recreate the duplicate this install is meant to prevent.
+if [ ! -w "$INSTALL_DIR" ]; then
+    echo ""
+    echo "❌ $INSTALL_DIR is not writable by $(whoami)."
+    echo "   Re-run with elevated rights, then launch from the result:"
+    echo ""
+    echo "     sudo $DIR/scripts/build_app.sh"
+    echo ""
+    echo "   Not falling back to another directory on purpose: two copies of the"
+    echo "   same bundle id make 'did my change take effect?' unanswerable."
+    exit 1
+fi
+
 echo "🚚 Installing $APP_NAME.app to $INSTALL_DIR/..."
 rm -rf "$INSTALL_DIR/$APP_NAME.app"
 cp -R "$APP_BUNDLE" "$INSTALL_DIR/$APP_NAME.app"
 
-# A copy at the old location is a duplicate bundle id, and Launch Services does not
-# guarantee which one it resolves. That makes "did my change take effect?" ambiguous,
-# which defeats the point of installing. Report it; do not delete it unasked, since
-# /Applications is outside the build's remit and may need elevated rights.
-if [ -d "/Applications/$APP_NAME.app" ]; then
+# Report any copy that could shadow the one just installed. Deliberately not the
+# repo-root copy: the script writes that itself, in the same run, so it is always in
+# sync with the install and can never be the stale winner. Only a location nothing
+# maintains any more is worth warning about — a warning that fires on every build
+# is a warning people learn to skip. Do not delete the stray unasked, since it may
+# be the user's own, but never leave the choice to chance either.
+STRAY="$HOME/Applications/$APP_NAME.app"
+if [ -d "$STRAY" ]; then
     echo ""
-    echo "⚠️  A copy also exists at /Applications/$APP_NAME.app"
-    echo "    Same bundle id — Launch Services may launch that one instead."
-    echo "    Remove it with: sudo rm -rf /Applications/$APP_NAME.app"
+    echo "⚠️  Another copy exists at $STRAY"
+    echo "    Same bundle id, and nothing updates it any more — Launch Services may"
+    echo "    launch it, making a correct change look like it did nothing."
+    echo "    Remove it with: rm -rf \"$STRAY\""
 fi
 
 echo ""

@@ -51,8 +51,10 @@ That is a design signal, not an inconvenience: code that resists headless testin
 
 ## 4. 🔨 Build Invariants
 
-- **`scripts/build_app.sh` is the only way to produce the bundle,** and it installs to `~/Applications` and nowhere else.
+- **`scripts/build_app.sh` is the only way to produce the bundle,** and it installs to `/Applications` and nowhere else.
   Never run from `build/` — that skips `Info.plist`, and `LSUIElement` lives there.
+  It refuses to fall back to another directory when `/Applications` is unwritable, because a silent second copy
+  makes "did my change take effect?" unanswerable; it fails and asks for `sudo` instead.
 - **Set `DEVELOPER_DIR` on every toolchain invocation** or the compiler can block on an interactive license prompt.
   Scripts must not depend on the caller's shell.
 - **The two toolchains stay separate:** the script builds, the package manager only tests.
@@ -83,7 +85,7 @@ A feature commit gets written while the shape is still emerging, so folding the 
 Relaunch rather than just build (a second instance will not take over from the first), and show what you saw, saying plainly what can't be checked headlessly:
 
 ```bash
-./scripts/build_app.sh && pkill -f DynamicIsland; sleep 0.4; open ~/Applications/DynamicIsland.app
+./scripts/build_app.sh && pkill -f DynamicIsland; sleep 0.4; open /Applications/DynamicIsland.app
 ```
 
 **6.3 Commit and push only once the user has confirmed the feature works.** Tests prove the policy functions; only they can confirm it does what they meant, and silence is not approval.
