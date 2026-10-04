@@ -18,7 +18,7 @@ import AppKit
 ///
 /// Each case is a closed enum rather than a raw string selector, so a typo in a
 /// selector name is a **compile error** and an accidental second owner of `⌘C` is
-/// impossible to express (AGENTS.md §0.3, levels 1–2). The menu items are installed
+/// impossible to express (AGENTS.md §1.1, levels 1–2). The menu items are installed
 /// with a **nil target**; that is deliberate, because AppKit then sends the action
 /// down the responder chain to whatever is genuinely first responder — the
 /// `NSTextView` backing a `TextEditor`, the `NSTextField` behind a `TextField`, or

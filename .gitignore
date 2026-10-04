@@ -10,3 +10,6 @@ main
 .DS_Store
 *.swp
 *~
+
+# Release archives
+*.zip

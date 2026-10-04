@@ -1,276 +1,450 @@
-# 🧩 Dynamic Island Plugin & App Injection Guide
+# 🧩 Plugin & App Injection Guide
 
-Welcome to the **Dynamic Island Plugin System** developer documentation. This guide details how to build, customize, and inject external applications (native Swift tools or web applications like Messenger, WhatsApp, Slack, Discord, ChatGPT) directly into the macOS notch.
+How to build a plugin and inject an application — native or web — into the Dynamic
+Island.
 
 ---
 
 ## 📑 Table of Contents
-1. [🌟 Architecture Overview](#1-architecture-overview)
-2. [🧩 Core Plugin Protocol (`IslandPlugin`)](#2-core-plugin-protocol-islandplugin)
-3. [🌐 Web App Injection Infrastructure (`IslandWebPlugin`)](#3-web-app-injection-infrastructure-islandwebplugin)
-4. [🎨 Standardized UI Component Library](#4-standardized-ui-component-library)
-5. [🖼️ Authentic App Icon Pipeline (`PluginIconManager`)](#5-authentic-app-icon-pipeline-pluginiconmanager)
-6. [🔔 Notification Subsystem & Web Bridge (`PluginNotificationManager`)](#6-notification-subsystem--web-bridge-pluginnotificationmanager)
-7. [📐 Dynamic Sizing Architecture (Large Cockpit Viewports)](#7-dynamic-sizing-architecture-large-cockpit-viewports)
-8. [🚀 Step-by-Step Tutorial: Ingesting a New Web App](#8-step-by-step-tutorial-ingesting-a-new-web-app)
-9. [🧪 Testing & Debugging Notifications](#9-testing--debugging-notifications)
+
+1. [Architecture Overview](#1-architecture-overview)
+2. [The `IslandPlugin` Protocol](#2-the-islandplugin-protocol)
+3. [Required Members You Cannot Skip](#3-required-members-you-cannot-skip)
+4. [Web App Injection](#4-web-app-injection)
+5. [The UI Component Library](#5-the-ui-component-library)
+6. [The Icon Pipeline](#6-the-icon-pipeline)
+7. [Per-Plugin Sound](#7-per-plugin-sound)
+8. [Notifications](#8-notifications)
+9. [Dynamic Sizing](#9-dynamic-sizing)
+10. [Tutorial: Adding a Web App](#10-tutorial-adding-a-web-app)
+11. [Testing a Plugin](#11-testing-a-plugin)
 
 ---
 
-## 1. 🌟 Architecture Overview
-
-The Dynamic Island plugin architecture provides an extensible, modular host where apps can live at the top of the display:
+## 1. Architecture Overview
 
 ```mermaid
 flowchart TD
-    subgraph NotchShell["🏝️ Dynamic Island Core"]
-        WindowCtrl["WindowController (880×720 NSPanel)"]
-        AppState["AppState (Dynamic Width & Height)"]
+    subgraph Core["🏝️ Core"]
+        WindowCtrl["WindowController<br/>NSPanel"]
+        AppState["AppState<br/>width & height"]
         TabHost["IslandTabContentView"]
-        CompactNotch["Compact Notch Ears (135pt Alert Pill)"]
     end
 
-    subgraph Managers["⚙️ System Coordinators"]
+    subgraph Mgrs["⚙️ Coordinators"]
         PluginMgr["PluginManager"]
-        IconMgr["PluginIconManager (Asset Cache & Resolver)"]
-        NotifMgr["PluginNotificationManager (Alerts & Web Bridge)"]
+        IconMgr["PluginIconManager"]
+        NotifMgr["PluginNotificationManager"]
+        SoundMgr["SoundManager"]
     end
 
     subgraph Plugins["🧩 Registered Plugins"]
-        Messenger["MessengerPlugin (740×400 pt)"]
-        CustomWeb["Custom Web Plugins (Slack, Discord, ChatGPT)"]
-        NativeTool["Custom Native Swift Plugins"]
+        Messenger["MessengerPlugin<br/>full-width app tab"]
+        Custom["Your plugin"]
     end
 
-    Messenger -->|"Implements"| PluginMgr
-    CustomWeb -->|"Implements"| PluginMgr
-    NativeTool -->|"Implements"| PluginMgr
+    Messenger -->|"implements"| PluginMgr
+    Custom -->|"implements"| PluginMgr
+    PluginMgr -->|"registers tabs"| AppState
+    AppState -->|"renders active"| TabHost
+    Custom -->|"makeContentView"| TabHost
 
-    PluginMgr -->|"Registers Tabs & Lifecycle"| AppState
-    AppState -->|"Renders Active Content"| TabHost
+    Plugins -->|"alerts"| NotifMgr
+    NotifMgr -->|"balloons compact pill"| Core
+    NotifMgr -->|"system banner"| macOS["UNUserNotificationCenter"]
 
-    Plugins -->|"Dispatches Alerts"| NotifMgr
-    NotifMgr -->|"Balloons Compact Pill"| CompactNotch
-    NotifMgr -->|"Posts System Banner"| macOS["macOS UNUserNotificationCenter"]
-
-    Plugins -->|"Loads App Logos"| IconMgr
+    Plugins -->|"logos"| IconMgr
+    Plugins -->|"cues"| SoundMgr
 ```
 
-### Key Principles
-- **Standardized Componentry:** All plugins and tools share the same Liquid Glass aesthetic, typography, and button feedback.
-- **Dynamic Adaptive Sizing:** Utility tabs (Media, Timer, Notes) stay compact (`560×170pt`), while rich integrated apps balloon smoothly into a full workspace (`740×400pt`).
-- **Autonomous Notification Pipeline:** Web notifications and page title flashing are intercepted automatically and manifested as in-notch live alert pills.
-- **Zero Tab Duplication:** The Universal Tab Content Rule guarantees all five opened island layout shells reuse the exact same plugin content view seamlessly.
+### Key principles
+
+- **Standardized components.** Every plugin shares the same Liquid Glass aesthetic,
+  typography, and button feedback.
+- **Dynamic sizing.** Plugins declare their viewport; the island resizes to fit.
+- **Automatic sound settings.** Registering a plugin produces working audio settings
+  with zero UI code.
+- **Zero tab duplication.** All shells render tab content through one shared view.
 
 ---
 
-## 2. 🧩 Core Plugin Protocol (`IslandPlugin`)
+## 2. The `IslandPlugin` Protocol
 
-Located in [`Sources/DynamicIsland/Plugins/IslandPlugin.swift`](../Sources/DynamicIsland/Plugins/IslandPlugin.swift), any app or custom feature implements `IslandPlugin`:
+Declared in `Sources/DynamicIsland/Plugins/IslandPlugin.swift`.
 
 ```swift
 public protocol IslandPlugin: AnyObject, Identifiable {
-    var id: String { get }                      // Unique reverse-DNS ID (e.g. "com.dynamicisland.plugin.messenger")
-    var name: String { get }                    // Display name shown on tab pill (e.g. "Messenger")
-    var icon: String { get }                    // SF Symbol fallback icon
-    var subtitle: String { get }                // Short description of the plugin
-    var author: String { get }                  // Author / Organization
-    var version: String { get }                 // Semantic version string
-    var capabilities: IslandPluginCapabilities { get } // Capability flags
-    var isEnabled: Bool { get set }             // Persistent user toggle
-    var preferredContentHeight: CGFloat { get } // Viewport height when expanded (defaults to 400pt for apps)
-    var preferredIslandWidth: CGFloat? { get }  // Viewport width when expanded (defaults to 740pt for apps)
-    var tabBadge: String? { get }               // Optional dynamic badge (e.g. "3" unread)
-    
-    // Lifecycle Hooks
+    var id: String { get }                       // reverse-DNS, e.g. "com.dynamicisland.plugin.whatsapp"
+    var name: String { get }                     // tab pill label
+    var icon: String { get }                     // SF Symbol fallback
+
+    var subtitle: String { get }                 // default ""
+    var author: String { get }                   // default "Dynamic Island Community"
+    var version: String { get }                  // default "1.0.0"
+    var capabilities: IslandPluginCapabilities { get }   // default []
+    var isEnabled: Bool { get set }              // user toggle
+
+    var preferredContentHeight: CGFloat { get } // default 400
+    var preferredIslandWidth: CGFloat? { get }   // default 740
+    var tabBadge: String? { get }                // default nil
+
+    var defaultSoundProfile: IslandPluginSoundProfile { get }  // default .standard
+
     func onRegister()
     func onEnable()
     func onDisable()
     func onTabSelected()
     func onTabDeselected()
-    
-    // View Providers
-    func makeContentView() -> AnyView
-    func makeCompactAccessory() -> AnyView?
-    func makeSettingsView() -> AnyView?
-    func makeIconView(size: CGFloat) -> AnyView?
+
+    @ViewBuilder func makeContentView() -> AnyView
+
+    func makeCompactAccessory() -> AnyView?      // default nil — LEFT ear, may carry text
+    func compactStatusToken() -> RightEarToken?  // default nil — RIGHT ear, graphical only
+    func makeSettingsView() -> AnyView?          // default nil
+    func makeIconView(size: CGFloat) -> AnyView? // default nil
 }
 ```
 
-### Capabilities (`IslandPluginCapabilities`)
-- `.variableHeight`: Supports dynamic, non-standard viewport height.
-- `.compactAccessory`: Supplies a closed notch ear accessory (e.g., unread counter or audio status).
-- `.customSettings`: Provides a dedicated card in **Preferences → Plugins**.
-- `.deepLinking`: Can receive custom url schemes (`dynamicisland://plugin/<id>`).
+### Capabilities
+
+| Flag | Meaning |
+| :--- | :--- |
+| `.variableHeight` | Supports a custom expanded height |
+| `.compactAccessory` | Supplies a closed-notch accessory |
+| `.customSettings` | Provides a card in **Preferences → Plugins** |
+| `.deepLinking` | Accepts `dynamicisland://plugin/<id>` |
+
+### Lifecycle
+
+`onRegister` / `onEnable` / `onDisable` are called by the registry. `onTabSelected`
+and `onTabDeselected` are dispatched centrally from `AppState.activeTab.didSet`, so
+**no assignment site can forget them** — including deep links, the timer path, and
+notification taps.
 
 ---
 
-## 3. 🌐 Web App Injection Infrastructure (`IslandWebPlugin`)
+## 3. Required Members You Cannot Skip
 
-For web-based services (Facebook Messenger, WhatsApp Web, Slack, Discord, Notion, Linear, ChatGPT), Dynamic Island provides a specialized host located in [`Sources/DynamicIsland/Plugins/IslandWebPlugin.swift`](../Sources/DynamicIsland/Plugins/IslandWebPlugin.swift).
+Two members are compile-time obligations rather than suggestions:
 
-### Features
-- **Persistent Non-Ephemeral Storage:** Stores cookies, `localStorage`, and session credentials in `WKWebsiteDataStore.default()` across app restarts.
-- **Desktop Safari User-Agent:** Prevents mobile web redirection, requesting modern full-featured desktop web apps.
-- **Dynamic Zoom Control:** Built-in interactive zooming (`setZoom()`, `zoomIn()`, `zoomOut()`) to scale chat interfaces.
-- **Custom CSS/JS Injection:** Injects dark scrollbars and layout tweaks at document load.
-- **External Link Routing:** Pop-up windows or external links (`target="_blank"`) open safely in the user's default browser (Safari, Chrome, Arc).
+**`defaultSoundProfile`** — declaring it on the protocol means a plugin cannot be
+registered without stating which cues it uses. The Settings UI generates controls
+from the plugin registry, so registering a plugin with working audio settings
+requires **no UI code at all**.
+
+**`compactStatusToken()`** — returns a `RightEarToken`, never a view. Because the
+right ear accepts only a closed token enum where no case except `.battery` can carry
+a string, a plugin **structurally cannot** put text there. If your plugin needs
+readable text in the notch, use `makeCompactAccessory()` for the left ear.
+
+> [!TIP]
+> These are level-2 enforcement in practice: omitting either one fails
+> compilation. See [`../AGENTS.md`](../AGENTS.md) §1.
+
+---
+
+## 4. Web App Injection
+
+`IslandWebPlugin.swift` provides a reusable `WKWebView` host.
+
+### `IslandWebConfiguration`
 
 ```swift
-let config = IslandWebConfiguration(
-    initialURL: URL(string: "https://www.messenger.com/")!,
-    customUserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-    zoomFactor: 0.88,
-    customCSS: "::-webkit-scrollbar { width: 4px; }",
-    customJS: nil,
-    allowsBackForwardNavigationGestures: true
-)
+public struct IslandWebConfiguration {
+    public var initialURL: URL
+    public var customUserAgent: String   // desktop Safari UA by default
+    public var zoomFactor: Double        // default 0.88
+    public var customCSS: String?
+    public var customJS: String?
+    public var allowsBackForwardNavigationGestures: Bool  // default true
+}
+```
 
-let controller = IslandWebController(configuration: config)
+### `IslandWebController`
+
+`NSObject`, `ObservableObject`, `WKNavigationDelegate`, `WKUIDelegate`, and
+`WKScriptMessageHandler`.
+
+| Member | Purpose |
+| :--- | :--- |
+| `webView` | The managed `WKWebView` |
+| `title`, `isLoading`, `currentURL`, `estimatedProgress` | Observed page state |
+| `canGoBack` / `canGoForward` | Navigation availability |
+| `pageTitleUnreadCount: Int` | Unread count parsed from the page title |
+| `onNotificationReceived` | `(title, body, icon) -> Void` — HTML5 notifications |
+| `onTitleNotificationTriggered` | `(count, rawTitle) -> Void` — unread increments |
+| `zoomIn()` / `zoomOut()` / `setZoom(_:)` / `resetZoom()` | Interactive zoom |
+
+### What it handles for you
+
+- **Persistent storage** via `WKWebsiteDataStore.default()` — cookies and
+  `localStorage` survive relaunch, so sessions stay logged in.
+- **Desktop user agent** so web apps serve their desktop layout instead of
+  redirecting to mobile.
+- **External link routing** — `target="_blank"` and pop-ups open in the user's
+  default browser rather than inside the notch.
+- **Zoom controls** for chat interfaces that are cramped in a narrow viewport.
+
+### Rendering it
+
+```swift
+IslandCardView(cornerRadius: 10) {
+    IslandWebViewHost(controller: webController)
+}
+.frame(maxHeight: .infinity)
 ```
 
 ---
 
-## 4. 🎨 Standardized UI Component Library
+## 5. The UI Component Library
 
-Located in [`Sources/DynamicIsland/Views/Components/IslandComponents.swift`](../Sources/DynamicIsland/Views/Components/IslandComponents.swift), these components ensure visual parity across all built-in tabs and external plugins:
+`Views/Components/IslandComponents.swift` — shared by built-in tabs and plugins so
+everything looks and feels identical.
 
-### 4.1 `IslandHeaderView`
-Universal header for tool tabs and integrated apps with leading logo/title, live status badge, and trailing action buttons:
+### `IslandHeaderView`
+
+Leading icon/logo, title, subtitle, optional status badge, and trailing actions.
+
 ```swift
 IslandHeaderView(
-    iconView: AnyView(MessengerAppIconView(size: 18, withSquircle: true)),
-    title: "Messenger",
-    subtitle: "Ready to chat",
+    iconView: PluginIconManager.shared.iconView(for: self, size: 18),
+    title: "WhatsApp",
+    subtitle: "Connected",
     statusBadge: "3 new",
     statusColor: .blue
 ) {
     HStack(spacing: 5) {
         IslandButton(nil, icon: "arrow.clockwise", variant: .ghost, size: .small) {
-            controller.reload()
-        }
-        IslandButton(nil, icon: "arrow.up.right.square", variant: .secondary, size: .small) {
-            controller.openInExternalBrowser()
+            webController.reload()
         }
     }
 }
 ```
 
-### 4.2 `IslandCardView`
-Continuous rounded rectangle container with translucent liquid glass backing and specular border:
+### `IslandCardView`
+
+The standard container: `Color.white.opacity(0.06)` with a continuous corner radius
+and a specular border.
+
 ```swift
-IslandCardView(cornerRadius: 10) {
-    IslandWebViewHost(controller: controller)
-}
-.frame(maxHeight: .infinity)
-.padding(.horizontal, 6)
+IslandCardView(cornerRadius: 10) { /* content */ }
 ```
 
-### 4.3 `IslandButton`
-Tactile bouncy buttons with macOS spring physics:
-- **Variants:** `.primary`, `.secondary`, `.ghost`, `.tinted(Color)`, `.danger`.
-- **Sizes:** `.small`, `.regular`, `.large`.
+### `IslandButton`
+
 ```swift
 IslandButton("Log Out", icon: "trash", variant: .danger, size: .small) {
-    controller.clearCache()
+    webController.clearCache()
 }
 ```
 
-### 4.4 `IslandSearchField` & `IslandEmptyStateView`
-- `IslandSearchField(text: $query, placeholder: "Search conversations...")`
-- `IslandEmptyStateView(icon: "wifi.slash", title: "No Connection", subtitle: "Reconnecting to server...")`
+- **Variants:** `.primary`, `.secondary`, `.ghost`, `.tinted(Color)`, `.danger`
+- **Sizes:** `.small`, `.regular`, `.large`
 
----
+### `IslandSearchField` & `IslandEmptyStateView`
 
-## 5. 🖼️ Authentic App Icon Pipeline (`PluginIconManager`)
-
-Dynamic Island uses a standardized icon resolution pipeline in [`Sources/DynamicIsland/Plugins/PluginIconManager.swift`](../Sources/DynamicIsland/Plugins/PluginIconManager.swift). Plugins can supply official PNG logos directly without relying on generic vector shapes.
-
-### Multi-Tier Discovery Hierarchy
-When an icon is requested for `id`:
-1. **In-Memory Cache:** Fast lookup in `NSCache<NSString, NSImage>`.
-2. **Persistent User Cache:** `~/Library/Application Support/DynamicIsland/PluginIcons/<id>.png`.
-3. **App Bundle Resources:** `DynamicIsland.app/Contents/Resources/PluginIcons/<id>.png`.
-4. **Development Directory:** `Resources/PluginIcons/<id>.png`.
-5. **Installed macOS Application:** Queries `NSWorkspace` for installed application icons (e.g. `/Applications/Slack.app`).
-6. **Fallback View Provider:** Calls `plugin.makeIconView(size:)` or renders the SF Symbol.
-
-### Packaging Bundled Icons
-To bundle an authentic icon with the app:
-1. Place a 512×512 PNG in `Resources/PluginIcons/<plugin_id>.png` (e.g. `Resources/PluginIcons/messenger.png`).
-2. `./scripts/build_app.sh` automatically packages all icons into `Contents/Resources/PluginIcons/`.
-
-### Remote Icon Downloading
 ```swift
-PluginIconManager.shared.downloadAndCacheIcon(from: logoURL, for: "com.example.plugin") { image in
-    print("Icon downloaded and cached!")
+IslandSearchField(text: $query, placeholder: "Search conversations...")
+
+IslandEmptyStateView(
+    icon: "wifi.slash",
+    title: "No Connection",
+    subtitle: "Reconnecting to server..."
+)
+```
+
+Also available: `IslandDivider`.
+
+---
+
+## 6. The Icon Pipeline
+
+`PluginIconManager` resolves authentic app logos through a multi-tier hierarchy, so
+plugins usually need no icon work at all.
+
+| # | Tier | Location |
+| :--- | :--- | :--- |
+| 1 | In-memory cache | `NSCache<NSString, NSImage>` |
+| 2 | Persistent user cache | `~/Library/Application Support/DynamicIsland/PluginIcons/<key>.png` |
+| 3 | App bundle resources | `DynamicIsland.app/Contents/Resources/PluginIcons/<key>.png` |
+| 4 | Development directory | `Resources/PluginIcons/<key>.png` |
+| 5 | Installed macOS app | `NSWorkspace` lookup by bundle id |
+| 6 | Fallback | `makeIconView(size:)`, else the SF Symbol |
+
+Each tier is tried against several **candidate keys** derived from the plugin id:
+the full id, its lowercase form, the last dot-separated component, and that
+component lowercased. So `com.dynamicisland.plugin.messenger` will also match
+`messenger.png` — which is why the bundled file is named `messenger.png` rather than
+the full reverse-DNS id.
+
+### Bundling an icon
+
+1. Place a 512×512 PNG at `Resources/PluginIcons/<name>.png`.
+2. `./scripts/build_app.sh` copies everything in that directory into
+   `Contents/Resources/PluginIcons/`.
+
+### Downloading one at runtime
+
+```swift
+PluginIconManager.shared.downloadAndCacheIcon(from: logoURL, for: plugin.id) { image in
+    // cached to disk and memory
 }
+```
+
+### Using it
+
+```swift
+PluginIconManager.shared.iconView(for: self, size: 18)   // for a plugin
+PluginIconManager.shared.iconView(for: .messenger, size: 18)  // for a tab
 ```
 
 ---
 
-## 6. 🔔 Notification Subsystem & Web Bridge (`PluginNotificationManager`)
+## 7. Per-Plugin Sound
 
-Located in [`Sources/DynamicIsland/Plugins/PluginNotificationManager.swift`](../Sources/DynamicIsland/Plugins/PluginNotificationManager.swift), this system intercepts and presents notifications across both compact notch and expanded states.
+Every plugin is sound-configurable with no extra UI code, because the Settings pane
+iterates the registry and builds controls from `IslandPluginSoundEvent.allCases`.
 
-### 6.1 HTML5 Web Notification Bridge
-Injected automatically at `.atDocumentStart` into `WKWebView`:
-- **JavaScript Polyfill:** Hooks `window.Notification` and `Notification.requestPermission()`.
-- When a web page executes `new Notification("Alice", { body: "Hey there!" })`, the bridge serializes the payload to native Swift via `WKScriptMessageHandler` (`islandNotification`).
+### Declaring defaults
 
-### 6.2 Title Flashing Detection
-Web apps frequently update the browser tab title instead of calling notifications (e.g., `(1) Alice: Hey there!`).
-- `IslandWebController` observes `webView.title`.
-- When the unread count increments (`count > oldCount`), it parses the sender and message preview and dispatches an alert.
+```swift
+public var defaultSoundProfile: IslandPluginSoundProfile {
+    IslandPluginSoundProfile(
+        isEnabled: true,
+        volume: 0.9,
+        alertCue: .ping,
+        interactionCue: .pop
+    )
+}
+```
 
-### 6.3 In-Notch Live Alert Pill
-When a notification arrives while the notch is closed:
-1. Compact ear width smoothly balloons outward from `56pt` to `135pt` (`IslandSpring.expand`).
-2. **Left Ear:** Displays the authentic app icon + author/sender name.
-3. **Right Ear:** Displays the message preview snippet.
-4. **Auditory Feedback:** Plays `SoundManager.shared.play(.notification)` ("Glass" or "Hero" chime).
-5. **Tap-to-Chat:** Tapping the live alert pill dismisses the notification and expands Dynamic Island straight into that plugin's tab.
-6. **Auto-Dismiss:** Banners gracefully collapse back to normal notch state after 4.5 seconds.
+### Playing a cue
 
-### 6.4 Native macOS System Notifications
-Every notification is simultaneously registered with `UNUserNotificationCenter`. Clicking a macOS system notification banner automatically opens Dynamic Island to that specific plugin tab via `DynamicIslandApp.swift`.
+```swift
+SoundManager.shared.playPluginCue(.alert, pluginId: plugin.id)
+SoundManager.shared.playPluginCue(.interaction, pluginId: plugin.id)
+```
 
-### 6.5 Posting Custom Notifications
-Any native or web plugin can dispatch notifications directly:
+> [!IMPORTANT]
+> **Always go through `playPluginCue(_:pluginId:)`.** It is the sole entry point that
+> honours the global master switch, the per-plugin mute, and
+> `globalVolume × pluginVolume`. Never call `NSSound` directly for plugin feedback —
+> that bypasses every user preference.
+
+The `pluginId` is required rather than inferred so notification audio is always
+attributed to the plugin that raised it.
+
+### Resolution and overrides
+
+`soundProfile(forPlugin:)` is the single resolution point: an override for the id
+wins, otherwise the plugin's `defaultSoundProfile` is used. Overrides are stored
+**sparsely**, so shipping a new plugin — or a new default cue — needs no migration.
+
+- `updatePluginSound(_:_:)` and `resetPluginSound(_:)` are the only mutators.
+- `IslandSoundCue` is the curated cue set (`pop`, `tink`, `ping`, `glass`, `hero`,
+  …), each with a display name and an SF Symbol for the picker.
+
+Alerts route here from `PluginNotificationManager`; interactions route from
+`AppState.activeTab.didSet`, so a plugin's cue plays on tab selection even if the
+user disabled the generic tab-switch sound.
+
+---
+
+## 8. Notifications
+
+`PluginNotificationManager` is the shared pipeline for both web and native plugins.
+
+### Dispatching
+
 ```swift
 PluginNotificationManager.shared.post(
-    pluginId: "com.dynamicisland.plugin.messenger",
-    title: "Sarah Jenkins",
+    pluginId: "com.dynamicisland.plugin.whatsapp",
+    title: "Sarah",
     body: "Are you free for lunch today?",
-    subtitle: "Messenger",
+    subtitle: "WhatsApp",
     soundEnabled: true
 )
 ```
 
+### What happens
+
+1. The plugin's configured **alert cue** plays via `playPluginCue(.alert, pluginId:)`.
+2. The in-notch live alert appears (below).
+3. A native macOS notification is posted via `UNUserNotificationCenter`. Clicking
+   that banner routes straight to the plugin's tab.
+
+### The in-notch alert pill
+
+While the island is closed, an alert shows the app icon and sender on the **left**
+ear and the sender's **icon only** on the **right** ear — never the message body,
+per the right-ear contract. It auto-dismisses after **4.5 seconds**, and tapping it
+opens the island directly into that plugin's tab.
+
+> [!NOTE]
+> The closed notch is a fixed-size window, so the alert does not balloon it. See
+> [`ARCHITECTURE.md`](ARCHITECTURE.md) §3.
+
+### The HTML5 web notification bridge
+
+`IslandWebController` injects a polyfill at `.atDocumentStart` that hooks
+`window.Notification` and `Notification.requestPermission()`. A page calling
+`new Notification(title, options)` is serialized across
+`WKScriptMessageHandler` (`islandNotification`) into native Swift and dispatched
+through the same pipeline.
+
+### Title-flashing detection
+
+Chat apps often update the tab title instead of firing a notification — e.g.
+`(3) Alice: Hey there!`. `IslandWebController` observes `webView.title`, and when the
+unread count increments it parses the sender and message and dispatches an alert.
+Expose the result through `tabBadge` and `compactStatusToken()` to surface it in the
+tab pill and the closed notch.
+
+### External triggering
+
+`PluginNotificationManager` listens on the distributed notification
+`com.dynamicisland.pluginNotification`, so other tools and scripts can raise
+notifications too:
+
+```bash
+xcrun swift -e '
+import Foundation
+let info: [String: Any] = [
+    "title": "Sarah Jenkins",
+    "body": "Hey! Testing the Dynamic Island notification banner!",
+    "pluginId": "com.dynamicisland.plugin.messenger"
+]
+DistributedNotificationCenter.default().postNotificationName(
+    NSNotification.Name("com.dynamicisland.pluginNotification"),
+    object: nil, userInfo: info, deliverImmediately: true
+)
+'
+```
+
 ---
 
-## 7. 📐 Dynamic Sizing Architecture (Large Cockpit Viewports)
+## 9. Dynamic Sizing
 
-Dynamic Island provides context-sensitive morphing between lightweight system tools and large workspace applications:
+Your plugin's viewport is declared, not hard-coded:
 
-| View Type | Island Width | Content Height | Total Expanded Height |
-| :--- | :--- | :--- | :--- |
-| **System Tools** (Media, Timer, Notes, Clipboard) | `560 pt` | `170 pt` | `~262 pt` |
-| **Integrated Apps** (Messenger, Slack, ChatGPT) | **`740 pt`** | **`400 pt`** | **`~488 pt`** |
+```swift
+public var preferredContentHeight: CGFloat { 400.0 }   // integrated apps
+public var preferredIslandWidth: CGFloat? { 740.0 }     // integrated apps
+```
 
-### Key Mechanics
-- **NSPanel Headroom:** `DynamicIslandPanel` uses an **`880 × 720 pt`** canvas, accommodating large viewports and the secondary split drop shelf without clipping.
-- **Open-Top Boundary Hit-Testing:** Transparent panel space passes clicks through to underlying macOS apps. Only coordinates inside `expandedWidth` and `totalExpandedHeight` receive mouse clicks.
-- **Seamless Spring Morphing:** Switching between tabs animates both width and height fluidly via `IslandAnimations.widthAnimation` and `heightAnimation`.
+Both axes morph with spring physics when switching between tool and app tabs. The
+panel is sized to accommodate the largest of these — see
+[`ARCHITECTURE.md`](ARCHITECTURE.md) §3 for the full geometry.
 
 ---
 
-## 8. 🚀 Step-by-Step Tutorial: Ingesting a New Web App
+## 10. Tutorial: Adding a Web App
 
-Here is how to add **WhatsApp Web** or **Slack** in under 5 minutes:
+Adding WhatsApp Web takes about five minutes.
 
-### Step 1: Create the Plugin Class
-Create `Sources/DynamicIsland/Plugins/Builtin/WhatsAppPlugin.swift`:
+### Step 1 — Create the plugin
+
+`Sources/DynamicIsland/Plugins/Builtin/WhatsAppPlugin.swift`:
 
 ```swift
 import SwiftUI
@@ -279,36 +453,51 @@ import AppKit
 public class WhatsAppPlugin: ObservableObject, IslandPlugin {
     public static let shared = WhatsAppPlugin()
     public static let pluginID = "com.dynamicisland.plugin.whatsapp"
-    
+
     public let id: String = WhatsAppPlugin.pluginID
     public let name: String = "WhatsApp"
     public let icon: String = "message.fill"
     public let subtitle: String = "WhatsApp Web chat inside the notch"
-    
+
     @Published public var isEnabled: Bool = true
+
     public var preferredContentHeight: CGFloat { 400.0 }
     public var preferredIslandWidth: CGFloat? { 740.0 }
-    
+
     public var tabBadge: String? {
-        webController.pageTitleUnreadCount > 0 ? "\(webController.pageTitleUnreadCount)" : nil
+        webController.pageTitleUnreadCount > 0
+            ? "\(webController.pageTitleUnreadCount)" : nil
     }
-    
+
+    /// Readable text belongs on the LEFT ear, so the unread count goes here.
+    public func makeCompactAccessory() -> AnyView? {
+        guard webController.pageTitleUnreadCount > 0 else { return nil }
+        return AnyView(
+            HStack(spacing: 3) {
+                Image(systemName: icon).font(IslandFont.iconMicro)
+                Text("\(webController.pageTitleUnreadCount)").font(IslandFont.metricNumeric)
+            }
+        )
+    }
+
+    /// The right ear takes only tokens — structurally incapable of carrying text.
+    public func compactStatusToken() -> RightEarToken? {
+        guard webController.pageTitleUnreadCount > 0 else { return nil }
+        return .pluginIcon(systemName: icon)
+    }
+
     public private(set) var webController: IslandWebController!
-    
+
     private init() {
         let config = IslandWebConfiguration(
             initialURL: URL(string: "https://web.whatsapp.com/")!,
-            customUserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
             zoomFactor: 0.88,
-            customCSS: "::-webkit-scrollbar { width: 4px; }",
-            customJS: nil,
-            allowsBackForwardNavigationGestures: true
+            customCSS: "::-webkit-scrollbar { width: 4px; }"
         )
         self.webController = IslandWebController(configuration: config)
-        
-        // Connect notifications
-        webController.onNotificationReceived = { [weak self] title, body, icon in
-            guard let self = self, self.isEnabled else { return }
+
+        webController.onNotificationReceived = { [weak self] title, body, _ in
+            guard let self, self.isEnabled else { return }
             PluginNotificationManager.shared.post(
                 pluginId: self.id,
                 title: title,
@@ -317,7 +506,7 @@ public class WhatsAppPlugin: ObservableObject, IslandPlugin {
             )
         }
     }
-    
+
     public func makeContentView() -> AnyView {
         AnyView(
             VStack(spacing: 6) {
@@ -325,7 +514,16 @@ public class WhatsAppPlugin: ObservableObject, IslandPlugin {
                     iconView: PluginIconManager.shared.iconView(for: self, size: 18),
                     title: "WhatsApp",
                     subtitle: "Connected"
-                )
+                ) {
+                    HStack(spacing: 5) {
+                        IslandButton(nil, icon: "plus", variant: .ghost, size: .small) {
+                            self.webController.zoomIn()
+                        }
+                        IslandButton(nil, icon: "minus", variant: .ghost, size: .small) {
+                            self.webController.zoomOut()
+                        }
+                    }
+                }
                 IslandCardView(cornerRadius: 10) {
                     IslandWebViewHost(controller: webController)
                 }
@@ -338,16 +536,22 @@ public class WhatsAppPlugin: ObservableObject, IslandPlugin {
 }
 ```
 
-### Step 2: Register in `PluginManager.swift`
+### Step 2 — Register it
+
 In `Sources/DynamicIsland/Plugins/PluginManager.swift`:
+
 ```swift
-register(WhatsAppPlugin.shared)
+register(plugin: WhatsAppPlugin.shared)
 ```
 
-### Step 3: Add Icon
-Place `whatsapp.png` in `Resources/PluginIcons/whatsapp.png`.
+### Step 3 — Add an icon
 
-### Step 4: Build & Launch
+Place `whatsapp.png` (512×512) at `Resources/PluginIcons/whatsapp.png`. The candidate
+key `whatsapp` matches the last component of the plugin id, so no other wiring is
+needed.
+
+### Step 4 — Build and launch
+
 ```bash
 DEVELOPER_DIR=/Library/Developer/CommandLineTools ./scripts/build_app.sh && \
 pkill -f DynamicIsland || true && \
@@ -356,27 +560,20 @@ open /Applications/DynamicIsland.app
 
 ---
 
-## 9. 🧪 Testing & Debugging Notifications
+## 11. Testing a Plugin
 
-### In-App Testing
-Open **Preferences (`⌘,`) → Plugins → Messenger** and click **Test Notification**. The notch will immediately balloon open with the app logo, author name, and message preview.
+**In-app** — **Preferences → Plugins → your plugin → Test Notification**. The notch
+shows the alert pill immediately.
 
-### Command Line / External Testing
-You can post test notifications from Terminal or external scripts via macOS `NSDistributedNotificationCenter`:
+**From Terminal** — post a distributed notification (see §8).
 
-```bash
-DEVELOPER_DIR=/Library/Developer/CommandLineTools xcrun swift -e '
-import Foundation
-let info: [String: Any] = [
-    "title": "Sarah Jenkins",
-    "body": "Hey! Testing the Dynamic Island notification banner!",
-    "pluginId": "com.dynamicisland.plugin.messenger"
-]
-DistributedNotificationCenter.default().postNotificationName(
-    NSNotification.Name("com.dynamicisland.pluginNotification"),
-    object: nil,
-    userInfo: info,
-    deliverImmediately: true
-)
-'
-```
+**Checklist for a new plugin:**
+
+- [ ] Compiles without overriding `defaultSoundProfile` or `compactStatusToken()`.
+- [ ] The tab pill appears and reorders with the user's custom order.
+- [ ] `makeContentView()` fills the declared viewport and the island resizes smoothly.
+- [ ] `tabBadge` shows an unread count when there is one.
+- [ ] `compactStatusToken()` shows an icon in the right ear — and no text appears.
+- [ ] Sound settings appear under **Preferences → Sound Effects** with no extra code.
+- [ ] A test notification shows the alert pill and plays the plugin's alert cue.
+- [ ] The web session survives a relaunch (if web-based).

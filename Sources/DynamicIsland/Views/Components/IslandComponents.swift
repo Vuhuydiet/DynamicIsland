@@ -594,7 +594,7 @@ public class TabDragCoordinator: ObservableObject {
     /// The pure order computation behind a reorder gesture.
     ///
     /// Extracted so the rule can be unit-tested without a running app, without
-    /// `UserDefaults`, and without `SoundManager` (AGENTS.md §0.4). It is a `static`
+    /// `UserDefaults`, and without `SoundManager` (AGENTS.md §3). It is a `static`
     /// function on `Sendable` inputs, so it is the single place the "where does the
     /// dragged tab land" answer is defined — `applyTargetOrder` is now just a
     /// caller that persists the result.
