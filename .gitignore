@@ -13,3 +13,6 @@ main
 
 # Release archives
 *.zip
+
+# Local scratch (throwaway prompts, agent output, notes)
+tmp/
