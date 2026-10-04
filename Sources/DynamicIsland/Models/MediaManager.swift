@@ -54,6 +54,17 @@ public struct MediaTrack: Equatable, Sendable {
             bundleIdentifier: nil
         )
     }
+
+    /// Whether this track represents "no media at all".
+    ///
+    /// This is the single definition of emptiness, and it is the *source*, not the
+    /// title, that decides. It previously was a string comparison against the
+    /// literal `"No Media Playing"`, which made a user-visible English caption
+    /// load-bearing control flow in three separate files: a real track genuinely
+    /// titled "No Media Playing" would be suppressed, and re-wording the empty-state
+    /// copy would have silently broken the compact ear and the playback-state guard.
+    /// The caption is now free to change without touching behaviour.
+    public var isEmpty: Bool { source == .none }
 }
 
 public enum MediaSource: String, Sendable {
@@ -103,11 +114,38 @@ public final class AudioOutputMonitor: @unchecked Sendable {
     private var defaultOutputDeviceID: AudioDeviceID = 0
     private var currentListenedDeviceID: AudioDeviceID = 0
     private var runBlock: AudioObjectPropertyListenerBlock?
+    /// The system-wide default-output-device listener, retained so it can be removed.
+    /// The per-device `runBlock` above was already removed on device change; this one
+    /// was registered once in `init` and never unregistered.
+    private var systemBlock: AudioObjectPropertyListenerBlock?
     public var onPlaybackStateChanged: (@Sendable () -> Void)?
-    
+
     private init() {
         setupSystemListener()
         updateDevice()
+    }
+
+    deinit {
+        var devAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if let systemBlock {
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject), &devAddress, DispatchQueue.main, systemBlock
+            )
+        }
+        var runAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if currentListenedDeviceID != 0, let runBlock {
+            AudioObjectRemovePropertyListenerBlock(
+                currentListenedDeviceID, &runAddress, DispatchQueue.main, runBlock
+            )
+        }
     }
     
     public func isAudioPlaying() -> Bool {
@@ -160,6 +198,7 @@ public final class AudioOutputMonitor: @unchecked Sendable {
                 self?.onPlaybackStateChanged?()
             }
         }
+        self.systemBlock = devBlock
         AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &devAddress, DispatchQueue.main, devBlock)
     }
     
@@ -236,6 +275,16 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     private var isRefreshing = false
     private var cachedWebTrack: MediaTrack?
     private var lastWebQueryTime: Date = .distantPast
+
+    /// Tokens for the block-based distributed-notification observers registered in
+    /// `setupDistributedNotifications`, plus the `NotificationCenter` observers
+    /// installed by the MediaRemote bridge. Held so `deinit` can unregister them.
+    private var observationTokens: [any NSObjectProtocol] = []
+
+    /// Tokens for the *local* `NotificationCenter` observers registered by the
+    /// MediaRemote bridge. Kept separate because the removal call targets a
+    /// different centre than the distributed ones.
+    private var mediaRemoteNotificationTokens: [any NSObjectProtocol] = []
     
     private init() {
         setupMediaRemote()
@@ -243,6 +292,16 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         setupAudioMonitor()
         startPolling()
         startVisualizer()
+    }
+
+    deinit {
+        DistributedObservationTokens.remove(observationTokens)
+        for token in mediaRemoteNotificationTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        mediaRemoteNotificationTokens = []
+        pollTimer?.invalidate()
+        visualizerTimer?.invalidate()
     }
     
     private func setupAudioMonitor() {
@@ -255,22 +314,14 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     }
     
     private func setupDistributedNotifications() {
-        let center = DistributedNotificationCenter.default()
-        center.addObserver(
-            forName: NSNotification.Name("com.apple.Music.playerInfo"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.refreshMedia()
-        }
-        
-        center.addObserver(
-            forName: NSNotification.Name("com.spotify.client.PlaybackStateChanged"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.refreshMedia()
-        }
+        observationTokens = DistributedObservationTokens.observe([
+            "com.apple.Music.playerInfo": { [weak self] _ in
+                self?.refreshMedia()
+            },
+            "com.spotify.client.PlaybackStateChanged": { [weak self] _ in
+                self?.refreshMedia()
+            },
+        ])
     }
     
     // MARK: - MediaRemote Framework Bridge
@@ -315,13 +366,14 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             ]
             
             for notifName in notifications {
-                NotificationCenter.default.addObserver(
+                let token = NotificationCenter.default.addObserver(
                     forName: NSNotification.Name(notifName),
                     object: nil,
                     queue: .main
                 ) { [weak self] _ in
                     self?.handleMediaRemoteNotification()
                 }
+                mediaRemoteNotificationTokens.append(token)
             }
         }
     }
@@ -364,7 +416,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         guard Date().timeIntervalSince(lastUserToggleTime) >= userToggleCooldown else { return }
         
         // Do not flip isPlaying to true if there is no actual active media track!
-        guard currentTrack.source != .none && currentTrack.title != "No Media Playing" else {
+        guard !currentTrack.isEmpty else {
             if currentTrack.isPlaying {
                 DispatchQueue.main.async { [weak self] in
                     self?.currentTrack.isPlaying = false

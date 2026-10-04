@@ -3,7 +3,7 @@ import SwiftUI
 import Combine
 import ServiceManagement
 
-public enum NotchStyle: String, CaseIterable, Identifiable {
+public enum NotchStyle: String, CaseIterable, Identifiable, Sendable {
     case auto = "Auto Detect"
     case notch = "Attach to Notch / Top"
     case floating = "Floating Pill"
@@ -72,7 +72,7 @@ public enum OpenedIslandStyle: String, CaseIterable, Identifiable {
     }
 }
 
-public enum SoundScheme: String, CaseIterable, Identifiable {
+public enum SoundScheme: String, CaseIterable, Identifiable, Sendable {
     case classic = "macOS Classic"
     case modern = "Modern Clicks"
     case subtle = "Subtle / Soft"
@@ -113,8 +113,12 @@ public enum DropShelfCardStyle: String, CaseIterable, Identifiable {
 
 public class SettingsManager: ObservableObject {
     public static let shared = SettingsManager()
-    
+
     private let defaults = UserDefaults.standard
+
+    /// Tokens for the block-based distributed-notification observers installed in
+    /// `init`. Held so `deinit` can unregister them.
+    private var observationTokens: [any NSObjectProtocol] = []
     
     @Published public var dropShelfCardStyle: DropShelfCardStyle {
         didSet { defaults.set(dropShelfCardStyle.rawValue, forKey: "dropShelfCardStyle") }
@@ -403,36 +407,32 @@ public class SettingsManager: ObservableObject {
         }
         self.launchAtLogin = isEnabled
 
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.setOpenedIslandStyle"),
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            if let styleStr = note.object as? String, let style = OpenedIslandStyle(rawValue: styleStr) {
-                self?.openedIslandStyle = style
-            }
-        }
-
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.reorderTabs"),
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            if let orderStr = note.object as? String {
-                let ids = orderStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                if !ids.isEmpty {
-                    self?.customTabOrder = ids
+        // See `DistributedObservationTokens`: the block-based registration API
+        // returns a token that must be given back to `removeObserver`. The tokens
+        // are held so `deinit` can release them.
+        observationTokens = DistributedObservationTokens.observe([
+            "com.dynamicisland.setOpenedIslandStyle": { [weak self] note in
+                if let styleStr = note.object as? String,
+                   let style = OpenedIslandStyle(rawValue: styleStr) {
+                    self?.openedIslandStyle = style
                 }
-            }
-        }
+            },
+            "com.dynamicisland.reorderTabs": { [weak self] note in
+                if let orderStr = note.object as? String {
+                    let ids = orderStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    if !ids.isEmpty {
+                        self?.customTabOrder = ids
+                    }
+                }
+            },
+            "com.dynamicisland.resetTabOrder": { [weak self] _ in
+                self?.resetTabOrder()
+            },
+        ])
+    }
 
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.resetTabOrder"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.resetTabOrder()
-        }
+    deinit {
+        DistributedObservationTokens.remove(observationTokens)
     }
     
     public func setLaunchAtLogin(_ enable: Bool) {

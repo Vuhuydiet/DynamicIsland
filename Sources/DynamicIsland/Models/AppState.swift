@@ -118,35 +118,40 @@ public class AppState: ObservableObject {
     
     private var hoverWorkItem: DispatchWorkItem?
     private var unhoverWorkItem: DispatchWorkItem?
-    private var collapseWorkItem: DispatchWorkItem?
-    
+
     private var lastCollapseTime: Date = .distantPast
     private let collapseCooldown: TimeInterval = 0.15
-    
+
+    /// Opaque tokens returned by block-based `addObserver` registrations.
+    ///
+    /// The block-based API returns a token that **must** be handed back to
+    /// `removeObserver` to unregister. Discarding it is only safe for as long as
+    /// this type is a process-lifetime singleton — the notification centre keeps the
+    /// block alive regardless, so the closure leaks the moment that assumption stops
+    /// holding. Keeping the tokens makes the teardown a one-liner in `deinit` and
+    /// keeps this type correct even if it is ever no longer a singleton.
+    ///
+    /// See `DistributedObservationTokens` for the shared registrar.
+    private var observationTokens: [any NSObjectProtocol] = []
+
     private init() {
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.toggleExpand"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.toggleExpand()
-        }
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.expandPinned"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.isPinned = true
-            self?.expand()
-        }
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.unpinCollapse"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.isPinned = false
-            self?.collapse()
-        }
+        observationTokens = DistributedObservationTokens.observe([
+            "com.dynamicisland.toggleExpand": { [weak self] _ in
+                self?.toggleExpand()
+            },
+            "com.dynamicisland.expandPinned": { [weak self] _ in
+                self?.isPinned = true
+                self?.expand()
+            },
+            "com.dynamicisland.unpinCollapse": { [weak self] _ in
+                self?.isPinned = false
+                self?.collapse()
+            },
+        ])
+    }
+
+    deinit {
+        DistributedObservationTokens.remove(observationTokens)
     }
     
     public static let expandedWidth: CGFloat = 560.0
@@ -190,13 +195,8 @@ public class AppState: ObservableObject {
     public var compactIslandWidth: CGFloat {
         let detector = NotchDetector.shared
         let settings = SettingsManager.shared
-        let isNotchMode: Bool
-        switch settings.notchStyle {
-        case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
-        case .notch: isNotchMode = true
-        case .floating: isNotchMode = false
-        }
-        
+        let isNotchMode = detector.isNotchMode
+
         if isNotchMode {
             let notchW = max(170.0, detector.currentNotch.notchWidth)
             return notchW + (compactEarWidth * 2.0) + (NotchIslandShape.compactFlareWidth * 2.0)
@@ -255,8 +255,6 @@ public class AppState: ObservableObject {
     public func expand(tab: IslandTab? = nil) {
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
-        collapseWorkItem?.cancel()
-        collapseWorkItem = nil
         if let tab = tab {
             self.activeTab = tab
         }
@@ -274,8 +272,6 @@ public class AppState: ObservableObject {
         hoverWorkItem = nil
         unhoverWorkItem?.cancel()
         unhoverWorkItem = nil
-        collapseWorkItem?.cancel()
-        collapseWorkItem = nil
         if force {
             isHovering = false
         }
@@ -293,23 +289,14 @@ public class AppState: ObservableObject {
     }
     
     public func handleMouseEnter() {
-        collapseWorkItem?.cancel()
-        collapseWorkItem = nil
-        
         guard !isExpanded else { return }
         
         // Strict boundary check: cursor must physically be inside the notch / compact pill
         if let screen = NSScreen.main {
             let mouse = NSEvent.mouseLocation
             let detector = NotchDetector.shared
-            let settings = SettingsManager.shared
-            let isNotchMode: Bool
-            switch settings.notchStyle {
-            case .auto: isNotchMode = detector.currentNotch.hasPhysicalNotch
-            case .notch: isNotchMode = true
-            case .floating: isNotchMode = false
-            }
-            
+            let isNotchMode = detector.isNotchMode
+
             let notchH = detector.currentNotch.notchHeight > 0 ? detector.currentNotch.notchHeight : 32.0
             let compactW = compactIslandWidth
             let compactH = isNotchMode ? notchH : 34.0
@@ -393,9 +380,7 @@ public class AppState: ObservableObject {
         isHovering = false
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
-        collapseWorkItem?.cancel()
-        collapseWorkItem = nil
-        
+
         guard !isPinned else { return }
         guard isExpanded else { return }
         

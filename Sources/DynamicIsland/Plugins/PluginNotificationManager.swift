@@ -52,18 +52,25 @@ public class PluginNotificationManager: ObservableObject {
     private var dismissTimer: Timer?
     private let displayDuration: TimeInterval = 4.5
     private var lastDispatchedTime: [String: Date] = [:]
-    
+
+    /// Tokens for the block-based distributed-notification observers installed in
+    /// `init`. Held so `deinit` can unregister them.
+    private var observationTokens: [any NSObjectProtocol] = []
+
     private init() {
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.pluginNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            let title = notification.userInfo?["title"] as? String ?? "Notification"
-            let body = notification.userInfo?["body"] as? String ?? ""
-            let pluginId = notification.userInfo?["pluginId"] as? String ?? MessengerPlugin.pluginID
-            self?.post(pluginId: pluginId, title: title, body: body)
-        }
+        observationTokens = DistributedObservationTokens.observe([
+            "com.dynamicisland.pluginNotification": { [weak self] notification in
+                let title = notification.userInfo?["title"] as? String ?? "Notification"
+                let body = notification.userInfo?["body"] as? String ?? ""
+                let pluginId = notification.userInfo?["pluginId"] as? String ?? MessengerPlugin.pluginID
+                self?.post(pluginId: pluginId, title: title, body: body)
+            },
+        ])
+    }
+
+    deinit {
+        DistributedObservationTokens.remove(observationTokens)
+        dismissTimer?.invalidate()
     }
     
     /// Posts a notification to Dynamic Island from any plugin or tool.

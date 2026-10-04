@@ -3,17 +3,25 @@ import SwiftUI
 
 public class SettingsWindowController: NSObject, NSWindowDelegate {
     public static let shared = SettingsWindowController()
-    
+
     public var window: NSWindow?
-    
+
+    /// Token for the block-based distributed-notification observer installed in
+    /// `init`. Held so `deinit` can unregister it.
+    private var observationToken: (any NSObjectProtocol)?
+
     private override init() {
         super.init()
-        DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.dynamicisland.showSettings"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.show()
+        observationToken = DistributedObservationTokens.observe([
+            "com.dynamicisland.showSettings": { [weak self] _ in
+                self?.show()
+            },
+        ]).first
+    }
+
+    deinit {
+        if let observationToken {
+            DistributedObservationTokens.remove([observationToken])
         }
     }
     
