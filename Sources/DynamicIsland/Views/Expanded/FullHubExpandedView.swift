@@ -7,13 +7,7 @@ public struct FullHubExpandedView: View {
     @StateObject private var dragCoordinator = TabDragCoordinator()
     @Namespace private var tabNamespace
 
-    private var isNotchMode: Bool {
-        switch settings.notchStyle {
-        case .auto:     return detector.currentNotch.hasPhysicalNotch
-        case .notch:    return true
-        case .floating: return false
-        }
-    }
+    private var isNotchMode: Bool { detector.isNotchMode }
 
     private var notchRowHeight: CGFloat {
         isNotchMode ? max(34.0, detector.currentNotch.notchHeight) : 8.0
@@ -190,18 +184,13 @@ public struct FullHubExpandedView: View {
         .help(appState.isPinned ? "Unpin Island" : "Pin Island Open")
     }
 
-    /// A subtle translucent Liquid-Glass divider line
-    private var glassRuler: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color.white.opacity(0.07))
-                .frame(height: 0.5)
-            Rectangle()
-                .fill(Color.black.opacity(0.2))
-                .frame(height: 0.5)
-                .offset(y: 0.5)
-        }
-    }
+    /// A subtle translucent Liquid-Glass divider line.
+    ///
+    /// Delegates to the shared `IslandDivider` rather than re-declaring the two
+    /// half-pixel rectangles. This view previously carried a private copy that was
+    /// pixel-identical to `IslandDivider`, which meant a tweak to the island's
+    /// divider had to be made in two files to take effect everywhere.
+    private var glassRuler: some View { IslandDivider() }
 
     /// Full-width Liquid Glass tab pill with fluid drag-and-drop reordering and matched-geometry gliding indicator
     @ViewBuilder
