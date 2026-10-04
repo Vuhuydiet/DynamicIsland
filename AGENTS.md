@@ -114,6 +114,8 @@ reaches for a global means a refactor, not a test.
   shell.
 - **The build script is the only way to produce the app bundle**, and it installs
   there. Run and test the app from that installed path, not from a build directory.
+  It installs to `~/Applications`, and only there — see §6.2 for why a second copy
+  on disk is a problem rather than a harmless backup.
 - **The project has zero third-party dependencies.** Keep it that way; adding one
   would need to reach both build paths to mean anything.
 - **Adding or removing a framework?** Update the build script and the framework
@@ -177,3 +179,40 @@ its own, and the refactor's risk is visible and independently revertable.
 Refactor only what the feature made worse. A module the feature merely passed
 through is not a target, and widening the blast radius turns a passing test suite
 into an unmeasured one.
+
+**6.2 A change is not done until it has been built, installed, and seen running.**
+After implementing anything, in this order:
+
+```bash
+./scripts/build_app.sh && pkill -f DynamicIsland; sleep 0.4; open ~/Applications/DynamicIsland.app
+```
+
+The test target is pure logic by design, so it is structurally incapable of covering
+most of what this app does — panel geometry, hit-testing, animations, the notch
+seal, media *integration*. Passing 71 tests says the policy functions are right; it
+says nothing about whether the island drew. The only evidence for that is a running
+app, and a stale one is worse than none: it reports the previous build's behaviour
+and reads as a failed change.
+
+Three things make the observation trustworthy, and each has a way of going wrong:
+
+- **Relaunch, do not just build.** An already-running copy keeps the old binary, so
+  the change appears to do nothing. `pkill` *before* `open`, and allow the process a
+  moment to die — the panel is a singleton and a second instance will not take over.
+- **Launch the installed path, never `build/`.** `build_app.sh` assembles the bundle
+  and installs it; running the binary out of the build directory skips `Info.plist`,
+  which is where `LSUIElement` lives, so the app grows a Dock icon and behaves like a
+  different program.
+- **One bundle id, one copy on disk.** The app installs to `~/Applications`, not
+  `/Applications`. A copy left at the old path is a duplicate bundle id, and which
+  one Launch Services resolves is not something to leave to chance when the whole
+  point is to see whether the change landed. The build script warns if one is found;
+  remove it, don't reason about it.
+
+Set `DEVELOPER_DIR` if invoking the toolchain by hand (§4).
+
+> [!NOTE]
+> **A screenshot or a spoken "it looks right" is the deliverable.** A green test
+> suite is a claim about logic; a screenshot is evidence about the app. When asked
+> to verify a change, produce the running app and show it, and say plainly what
+> cannot be checked headlessly rather than implying full coverage.

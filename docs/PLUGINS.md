@@ -555,7 +555,7 @@ needed.
 ```bash
 DEVELOPER_DIR=/Library/Developer/CommandLineTools ./scripts/build_app.sh && \
 pkill -f DynamicIsland || true && \
-open /Applications/DynamicIsland.app
+open ~/Applications/DynamicIsland.app
 ```
 
 ---

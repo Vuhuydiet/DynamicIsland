@@ -40,10 +40,13 @@ Build, install, and relaunch in one step:
 DEVELOPER_DIR=/Library/Developer/CommandLineTools ./scripts/build_app.sh && \
 pkill -f DynamicIsland || true && \
 sleep 0.4 && \
-open /Applications/DynamicIsland.app
+open ~/Applications/DynamicIsland.app
 ```
 
-The script compiles the sources, assembles the `.app` bundle, generates `Info.plist`, copies the app icon and plugin icons into `Contents/Resources/`, and installs the result to **`/Applications/DynamicIsland.app`**. Always run and test the app from that path.
+The script compiles the sources, assembles the `.app` bundle, generates `Info.plist`, copies the app icon and plugin icons into `Contents/Resources/`, and installs the result to **`~/Applications/DynamicIsland.app`**. Always run and test the app from that path.
+
+> [!IMPORTANT]
+> **Keep only one copy of the app on disk.** It installs to `~/Applications` rather than `/Applications` so it needs no elevated rights and cannot collide with another user's install. A leftover copy at `/Applications/DynamicIsland.app` is the *same bundle id*, and Launch Services does not guarantee which one it launches — so a change can appear to have no effect. The build script warns when it finds one; remove it rather than leaving it to chance.
 
 > [!IMPORTANT]
 > **Always prefix build commands with `DEVELOPER_DIR`.** Without it, `swiftc` can block on an interactive Xcode license prompt on machines where the GUI license was never accepted. The build script sets this internally, but any manual `swiftc`/`xcodebuild` invocation must set it too.

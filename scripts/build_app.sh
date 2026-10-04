@@ -99,10 +99,33 @@ chmod +x "$MACOS_DIR/$APP_NAME"
 rm -rf "$DIR/$APP_NAME.app"
 cp -R "$APP_BUNDLE" "$DIR/$APP_NAME.app"
 
-# Move/Copy to /Applications/
-echo "🚚 Installing $APP_NAME.app to /Applications/..."
-rm -rf "/Applications/$APP_NAME.app"
-cp -R "$APP_BUNDLE" "/Applications/$APP_NAME.app"
+# Install to ~/Applications, NOT /Applications.
+#
+# The home copy is the one that gets launched and observed, so it must be the same
+# bundle that was just built. Installing to /Applications instead would leave two
+# copies of the same bundle id on the machine, and which one Launch Services picks
+# is not something a test session should depend on.
+#
+# ~ is expanded explicitly rather than written as a literal ~ inside quotes, which
+# would be a path that does not exist. $HOME in double quotes is already expanded,
+# so this line is safe as written.
+INSTALL_DIR="$HOME/Applications"
+mkdir -p "$INSTALL_DIR"
+echo "🚚 Installing $APP_NAME.app to $INSTALL_DIR/..."
+rm -rf "$INSTALL_DIR/$APP_NAME.app"
+cp -R "$APP_BUNDLE" "$INSTALL_DIR/$APP_NAME.app"
 
-echo "✅ Successfully built and installed $APP_NAME.app to /Applications/!"
-echo "🚀 You can launch it using: open /Applications/$APP_NAME.app"
+# A copy at the old location is a duplicate bundle id, and Launch Services does not
+# guarantee which one it resolves. That makes "did my change take effect?" ambiguous,
+# which defeats the point of installing. Report it; do not delete it unasked, since
+# /Applications is outside the build's remit and may need elevated rights.
+if [ -d "/Applications/$APP_NAME.app" ]; then
+    echo ""
+    echo "⚠️  A copy also exists at /Applications/$APP_NAME.app"
+    echo "    Same bundle id — Launch Services may launch that one instead."
+    echo "    Remove it with: sudo rm -rf /Applications/$APP_NAME.app"
+fi
+
+echo ""
+echo "✅ Successfully built and installed $APP_NAME.app to $INSTALL_DIR/!"
+echo "🚀 Relaunch it with: open $INSTALL_DIR/$APP_NAME.app"
