@@ -155,3 +155,25 @@ currently *is*? → `docs/`. Does it answer "can I run this?" → `README.md`.
    cannot, say so rather than shipping a confident wrong fact.
 7. **Update docs in the same change as the code.** A doc describing the old behaviour
    is a bug in the doc.
+
+---
+
+## 6. 🔁 Change Discipline
+
+**6.1 A major feature is followed by its own refactor commit.** Once a feature is
+implemented *and* tested, refactor the modules it actually left in a worse state —
+naming, cohesion, duplication, dead paths — and land that as a **separate commit**,
+not folded into the feature.
+
+A *major* feature is one that adds a subsystem or a public contract, not a fix. The
+reason the refactor must be its own commit is that a feature commit is written under
+time pressure while the shape of the code is still being discovered, so whatever
+structure it leaves behind is provisional rather than designed. Folding the cleanup
+in hides how much of it was retrofitted: the history reads as one tidy change instead
+of one discovery plus one correction, and the provisional shape survives because
+nobody ever priced it. As a separate commit the behaviour change stays reviewable on
+its own, and the refactor's risk is visible and independently revertable.
+
+Refactor only what the feature made worse. A module the feature merely passed
+through is not a target, and widening the blast radius turns a passing test suite
+into an unmeasured one.
