@@ -92,6 +92,9 @@ public class DynamicIslandHostingView: NSHostingView<IslandContainerView> {
 public class WindowController: ObservableObject {
     public static let shared = WindowController()
     
+    public static let panelWidth: CGFloat = 880.0
+    public static let panelHeight: CGFloat = 720.0
+    
     public var panel: DynamicIslandPanel?
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
@@ -282,8 +285,8 @@ public class WindowController: ObservableObject {
     public func createAndShowPanel() {
         guard let screen = NSScreen.main else { return }
         
-        let panelWidth: CGFloat = 640.0
-        let panelHeight: CGFloat = 480.0
+        let panelWidth: CGFloat = Self.panelWidth
+        let panelHeight: CGFloat = Self.panelHeight
         
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
@@ -303,8 +306,8 @@ public class WindowController: ObservableObject {
     public func repositionPanel() {
         guard let screen = NSScreen.main, let panel = self.panel else { return }
         
-        let panelWidth: CGFloat = 640.0
-        let panelHeight: CGFloat = 480.0
+        let panelWidth: CGFloat = Self.panelWidth
+        let panelHeight: CGFloat = Self.panelHeight
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
         let originY = screenRect.maxY - panelHeight

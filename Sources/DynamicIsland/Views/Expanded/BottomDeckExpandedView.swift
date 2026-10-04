@@ -4,6 +4,7 @@ public struct BottomDeckExpandedView: View {
     @ObservedObject var appState  = AppState.shared
     @ObservedObject var detector  = NotchDetector.shared
     @ObservedObject var settings  = SettingsManager.shared
+    @StateObject private var dragCoordinator = TabDragCoordinator()
     @Namespace private var dockNamespace
 
     private var isNotchMode: Bool {
@@ -108,7 +109,7 @@ public struct BottomDeckExpandedView: View {
 
             // ── Tab Content (Positioned First) ────────────────────────────
             IslandTabContentView()
-                .frame(height: 170, alignment: .top)
+                .frame(height: appState.currentContentHeight, alignment: .top)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 6)
 
@@ -119,11 +120,18 @@ public struct BottomDeckExpandedView: View {
 
             // ── Bottom Dock Navigation Bar ────────────────────────────────
             let visibleTabs = IslandTab.allCases.filter { settings.isTabVisible($0) }
-            HStack(spacing: 6) {
+            let totalBarWidth = expandedWidth - 76
+            let spacing: CGFloat = 6
+            let count = max(1, visibleTabs.count)
+            let pillWidth = (totalBarWidth - CGFloat(count - 1) * spacing) / CGFloat(count)
+            let slotStep = pillWidth + spacing
+
+            HStack(spacing: spacing) {
                 ForEach(visibleTabs) { tab in
-                    dockPill(tab)
+                    dockPill(tab, visibleTabs: visibleTabs, slotStep: slotStep)
                 }
             }
+            .animation(IslandSpring.tabSlide, value: visibleTabs)
             .padding(.horizontal, 38)
             .padding(.bottom, 12)
             .onAppear {
@@ -185,51 +193,58 @@ public struct BottomDeckExpandedView: View {
     }
 
     @ViewBuilder
-    private func dockPill(_ tab: IslandTab) -> some View {
+    private func dockPill(_ tab: IslandTab, visibleTabs: [IslandTab], slotStep: CGFloat) -> some View {
         let isActive = appState.activeTab == tab
-        Button {
-            SoundManager.shared.play(.click)
-            withAnimation(IslandSpring.tabSlide) {
-                appState.activeTab = tab
+        let isDragging = dragCoordinator.draggingTab == tab
+
+        HStack(spacing: 5) {
+            tab.iconView(size: isActive ? 12 : 11)
+                .scaleEffect(isActive ? 1.08 : 1.0)
+            if isActive {
+                Text(tab.rawValue)
+                    .font(IslandFont.caption)
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .scale(scale: 0.88)))
             }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: tab.icon)
-                    .font(IslandFont.iconSmall)
-                    .scaleEffect(isActive ? 1.08 : 1.0)
+        }
+        .foregroundColor(isActive ? .white : .white.opacity(0.50))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
+        .background {
+            ZStack {
                 if isActive {
-                    Text(tab.rawValue)
-                        .font(IslandFont.caption)
-                        .lineLimit(1)
-                        .transition(.opacity.combined(with: .scale(scale: 0.88)))
-                }
-            }
-            .foregroundColor(isActive ? .white : .white.opacity(0.50))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .background {
-                ZStack {
-                    if isActive {
-                        Capsule()
-                            .fill(Color.white.opacity(0.20))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.28), lineWidth: 0.5)
-                            )
-                            .shadow(color: .white.opacity(0.08), radius: 5, x: 0, y: -1)
-                            .matchedGeometryEffect(id: "bottomDeckActiveTabIndicator", in: dockNamespace)
-                    } else {
-                        Capsule()
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-                            )
-                    }
+                    Capsule()
+                        .fill(Color.white.opacity(isDragging ? 0.26 : 0.20))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(isDragging ? 0.60 : 0.28), lineWidth: isDragging ? 1.0 : 0.5)
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.35) : .white.opacity(0.08), radius: isDragging ? 8 : 5, x: 0, y: isDragging ? 2 : -1)
+                        .matchedGeometryEffect(id: "bottomDeckActiveTabIndicator", in: dockNamespace)
+                } else {
+                    Capsule()
+                        .fill(Color.white.opacity(isDragging ? 0.14 : 0.04))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(isDragging ? 0.45 : 0.06), lineWidth: isDragging ? 1.0 : 0.5)
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.25) : .clear, radius: isDragging ? 6 : 0, x: 0, y: 1)
                 }
             }
         }
-        .buttonStyle(PillButtonStyle())
+        .contentShape(Rectangle())
+        .help("Click to open · Drag to reorder")
+        .islandTabReorderDrag(
+            tab: tab,
+            orderedTabs: visibleTabs,
+            slotStep: slotStep,
+            coordinator: dragCoordinator
+        ) { selectedTab in
+            SoundManager.shared.play(.click)
+            withAnimation(IslandSpring.tabSlide) {
+                appState.activeTab = selectedTab
+            }
+        }
         .animation(IslandSpring.tabSlide, value: isActive)
     }
 }

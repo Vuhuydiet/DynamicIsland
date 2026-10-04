@@ -4,6 +4,7 @@ public struct CompactHUDExpandedView: View {
     @ObservedObject var appState  = AppState.shared
     @ObservedObject var detector  = NotchDetector.shared
     @ObservedObject var settings  = SettingsManager.shared
+    @StateObject private var dragCoordinator = TabDragCoordinator()
     @Namespace private var segmentNamespace
 
     private var isNotchMode: Bool {
@@ -107,11 +108,18 @@ public struct CompactHUDExpandedView: View {
 
             // ── Segmented Control Tab Bar ─────────────────────────────────
             let visibleTabs = IslandTab.allCases.filter { settings.isTabVisible($0) }
-            HStack(spacing: 2) {
+            let totalBarWidth = expandedWidth - 56 - 6
+            let spacing: CGFloat = 2
+            let count = max(1, visibleTabs.count)
+            let pillWidth = (totalBarWidth - CGFloat(count - 1) * spacing) / CGFloat(count)
+            let slotStep = pillWidth + spacing
+
+            HStack(spacing: spacing) {
                 ForEach(visibleTabs) { tab in
-                    segmentedTabItem(tab)
+                    segmentedTabItem(tab, visibleTabs: visibleTabs, slotStep: slotStep)
                 }
             }
+            .animation(IslandSpring.tabSlide, value: visibleTabs)
             .padding(3)
             .background(
                 Capsule()
@@ -142,7 +150,7 @@ public struct CompactHUDExpandedView: View {
 
             // ── Tab Content ───────────────────────────────────────────────
             IslandTabContentView()
-                .frame(height: 165, alignment: .top)
+                .frame(height: appState.currentContentHeight, alignment: .top)
                 .padding(.horizontal, 22)
                 .padding(.bottom, 6)
         }
@@ -186,39 +194,45 @@ public struct CompactHUDExpandedView: View {
     }
 
     @ViewBuilder
-    private func segmentedTabItem(_ tab: IslandTab) -> some View {
+    private func segmentedTabItem(_ tab: IslandTab, visibleTabs: [IslandTab], slotStep: CGFloat) -> some View {
         let isActive = appState.activeTab == tab
-        Button {
-            SoundManager.shared.play(.click)
-            withAnimation(IslandSpring.tabSlide) {
-                appState.activeTab = tab
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 10))
-                if isActive {
-                    Text(tab.rawValue)
-                        .font(.system(size: 10, weight: .semibold))
-                        .lineLimit(1)
-                }
-            }
-            .foregroundColor(isActive ? .white : .white.opacity(0.50))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-            .background {
-                if isActive {
-                    Capsule()
-                        .fill(Color.white.opacity(0.22))
-                        .overlay(
-                            Capsule().stroke(Color.white.opacity(0.3), lineWidth: 0.5)
-                        )
-                        .shadow(color: .white.opacity(0.08), radius: 3)
-                        .matchedGeometryEffect(id: "compactHUDActiveTabIndicator", in: segmentNamespace)
-                }
+        let isDragging = dragCoordinator.draggingTab == tab
+
+        HStack(spacing: 4) {
+            tab.iconView(size: 10)
+            if isActive {
+                Text(tab.rawValue)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
             }
         }
-        .buttonStyle(PillButtonStyle())
+        .foregroundColor(isActive ? .white : .white.opacity(0.50))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+        .background {
+            if isActive {
+                Capsule()
+                    .fill(Color.white.opacity(isDragging ? 0.28 : 0.22))
+                    .overlay(
+                        Capsule().stroke(Color.white.opacity(isDragging ? 0.55 : 0.3), lineWidth: isDragging ? 1.0 : 0.5)
+                    )
+                    .shadow(color: isDragging ? .white.opacity(0.30) : .white.opacity(0.08), radius: isDragging ? 6 : 3)
+                    .matchedGeometryEffect(id: "compactHUDActiveTabIndicator", in: segmentNamespace)
+            }
+        }
+        .contentShape(Rectangle())
+        .help("Click to open · Drag to reorder")
+        .islandTabReorderDrag(
+            tab: tab,
+            orderedTabs: visibleTabs,
+            slotStep: slotStep,
+            coordinator: dragCoordinator
+        ) { selectedTab in
+            SoundManager.shared.play(.click)
+            withAnimation(IslandSpring.tabSlide) {
+                appState.activeTab = selectedTab
+            }
+        }
         .animation(IslandSpring.tabSlide, value: isActive)
     }
 }

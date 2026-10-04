@@ -155,6 +155,125 @@ public class SettingsManager: ObservableObject {
     public func isTabVisible(_ tab: IslandTab) -> Bool {
         !hiddenTabs.contains(tab.rawValue)
     }
+
+    /// Raw values of tabs specifying their custom display order.
+    @Published public var customTabOrder: [String] {
+        didSet {
+            defaults.set(customTabOrder, forKey: "customTabOrder")
+        }
+    }
+    
+    // MARK: - Per-Plugin Sound Overrides
+    
+    /// User overrides of each plugin's `defaultSoundProfile`, keyed by plugin id.
+    /// Only stored entries (i.e. ones the user actually customized) live here;
+    /// unstored ids fall back to the plugin's declared defaults, so shipping a new
+    /// plugin with a new default cue never requires a migration.
+    @Published public var pluginSoundOverrides: [String: IslandPluginSoundProfile] {
+        didSet {
+            guard let data = try? JSONEncoder().encode(pluginSoundOverrides) else { return }
+            defaults.set(data, forKey: "pluginSoundOverrides")
+        }
+    }
+    
+    /// Effective audio configuration for a plugin: the user override if one exists,
+    /// otherwise the plugin's declared `defaultSoundProfile`.
+    public func soundProfile(forPlugin id: String) -> IslandPluginSoundProfile {
+        if let override = pluginSoundOverrides[id] { return override }
+        return PluginManager.shared.plugin(for: id)?.defaultSoundProfile ?? .standard
+    }
+    
+    /// Writes a partial change into a plugin's profile, seeding it from the plugin's
+    /// defaults on first write so a brand-new plugin is immediately customizable.
+    public func updatePluginSound(_ id: String, _ mutate: (inout IslandPluginSoundProfile) -> Void) {
+        var profile = soundProfile(forPlugin: id)
+        mutate(&profile)
+        var next = pluginSoundOverrides
+        next[id] = profile
+        pluginSoundOverrides = next
+    }
+    
+    /// Clears a plugin's override so it inherits its declared defaults again.
+    public func resetPluginSound(_ id: String) {
+        var next = pluginSoundOverrides
+        next.removeValue(forKey: id)
+        pluginSoundOverrides = next
+    }
+
+    /// Orders the provided array of tabs according to customTabOrder.
+    /// Unlisted tabs (e.g. newly loaded plugins) are cleanly appended at the end.
+    public func orderedTabs(from tabs: [IslandTab]) -> [IslandTab] {
+        guard !customTabOrder.isEmpty else { return tabs }
+        
+        var tabMap: [String: IslandTab] = [:]
+        for tab in tabs {
+            tabMap[tab.rawValue] = tab
+        }
+        
+        var result: [IslandTab] = []
+        var consumed = Set<String>()
+        
+        for id in customTabOrder {
+            if let tab = tabMap[id] {
+                result.append(tab)
+                consumed.insert(id)
+            }
+        }
+        
+        for tab in tabs {
+            if !consumed.contains(tab.rawValue) {
+                result.append(tab)
+            }
+        }
+        
+        return result
+    }
+
+    /// Moves a tab up (towards index 0) in the custom tab order.
+    public func moveTabUp(_ tab: IslandTab) {
+        let current = IslandTab.allCases
+        guard let index = current.firstIndex(of: tab), index > 0 else { return }
+        
+        var order = current.map(\.rawValue)
+        order.swapAt(index, index - 1)
+        self.customTabOrder = order
+    }
+
+    /// Moves a tab down (towards the end) in the custom tab order.
+    public func moveTabDown(_ tab: IslandTab) {
+        let current = IslandTab.allCases
+        guard let index = current.firstIndex(of: tab), index < current.count - 1 else { return }
+        
+        var order = current.map(\.rawValue)
+        order.swapAt(index, index + 1)
+        self.customTabOrder = order
+    }
+
+    /// Moves a tab directly to the position of another target tab in the custom tab order.
+    public func moveTab(_ tab: IslandTab, toPositionOf targetTab: IslandTab) {
+        guard tab != targetTab else { return }
+        var currentOrder = customTabOrder.isEmpty ? IslandTab.allCases.map(\.rawValue) : customTabOrder
+        
+        let allIds = IslandTab.allCases.map(\.rawValue)
+        for id in allIds where !currentOrder.contains(id) {
+            currentOrder.append(id)
+        }
+        
+        guard let fromIndex = currentOrder.firstIndex(of: tab.rawValue),
+              let targetIndex = currentOrder.firstIndex(of: targetTab.rawValue) else { return }
+        
+        currentOrder.remove(at: fromIndex)
+        guard let newTargetIndex = currentOrder.firstIndex(of: targetTab.rawValue) else { return }
+        
+        let insertionIndex = (fromIndex < targetIndex) ? newTargetIndex + 1 : newTargetIndex
+        currentOrder.insert(tab.rawValue, at: insertionIndex)
+        self.customTabOrder = currentOrder
+    }
+
+    /// Resets the tab order to the default built-in order.
+    public func resetTabOrder() {
+        self.customTabOrder = []
+    }
     
     // MARK: - Sound Settings
     @Published public var soundEffectsEnabled: Bool {
@@ -244,6 +363,17 @@ public class SettingsManager: ObservableObject {
         // Restore hidden tabs (stored as array of raw-value strings)
         let savedHidden = defaults.stringArray(forKey: "hiddenTabs") ?? []
         self.hiddenTabs = Set(savedHidden)
+
+        // Restore custom tab ordering
+        let savedCustomOrder = defaults.stringArray(forKey: "customTabOrder") ?? []
+        self.customTabOrder = savedCustomOrder
+        
+        if let soundData = defaults.data(forKey: "pluginSoundOverrides"),
+           let decoded = try? JSONDecoder().decode([String: IslandPluginSoundProfile].self, from: soundData) {
+            self.pluginSoundOverrides = decoded
+        } else {
+            self.pluginSoundOverrides = [:]
+        }
         
         self.soundEffectsEnabled = defaults.object(forKey: "soundEffectsEnabled") as? Bool ?? true
         self.soundVolume = defaults.object(forKey: "soundVolume") as? Double ?? 0.75
@@ -277,6 +407,27 @@ public class SettingsManager: ObservableObject {
             if let styleStr = note.object as? String, let style = OpenedIslandStyle(rawValue: styleStr) {
                 self?.openedIslandStyle = style
             }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dynamicisland.reorderTabs"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            if let orderStr = note.object as? String {
+                let ids = orderStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                if !ids.isEmpty {
+                    self?.customTabOrder = ids
+                }
+            }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dynamicisland.resetTabOrder"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.resetTabOrder()
         }
     }
     

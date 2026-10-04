@@ -4,6 +4,7 @@ public struct FullHubExpandedView: View {
     @ObservedObject var appState  = AppState.shared
     @ObservedObject var detector  = NotchDetector.shared
     @ObservedObject var settings  = SettingsManager.shared
+    @StateObject private var dragCoordinator = TabDragCoordinator()
     @Namespace private var tabNamespace
 
     private var isNotchMode: Bool {
@@ -106,13 +107,19 @@ public struct FullHubExpandedView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 5)
 
-            // ── Tab Bar — full width, equally spaced with generous edge margins ───
             let visibleTabs = IslandTab.allCases.filter { settings.isTabVisible($0) }
-            HStack(spacing: 4) {
+            let totalBarWidth = expandedWidth - 80
+            let spacing: CGFloat = 4
+            let count = max(1, visibleTabs.count)
+            let pillWidth = (totalBarWidth - CGFloat(count - 1) * spacing) / CGFloat(count)
+            let slotStep = pillWidth + spacing
+
+            HStack(spacing: spacing) {
                 ForEach(visibleTabs) { tab in
-                    tabPill(tab)
+                    tabPill(tab, visibleTabs: visibleTabs, slotStep: slotStep)
                 }
             }
+            .animation(IslandSpring.tabSlide, value: visibleTabs)
             .padding(.horizontal, 40)
             .padding(.bottom, 5)
             .onAppear {
@@ -135,7 +142,7 @@ public struct FullHubExpandedView: View {
 
             // ── Tab Content ───────────────────────────────────────────────
             IslandTabContentView()
-                .frame(height: 170, alignment: .top)
+                .frame(height: appState.currentContentHeight, alignment: .top)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 6)
         }
@@ -185,54 +192,61 @@ public struct FullHubExpandedView: View {
         }
     }
 
-    /// Full-width Liquid Glass tab pill with fluid matched-geometry gliding indicator
+    /// Full-width Liquid Glass tab pill with fluid drag-and-drop reordering and matched-geometry gliding indicator
     @ViewBuilder
-    private func tabPill(_ tab: IslandTab) -> some View {
+    private func tabPill(_ tab: IslandTab, visibleTabs: [IslandTab], slotStep: CGFloat) -> some View {
         let isActive = appState.activeTab == tab
-        Button {
-            SoundManager.shared.play(.click)
-            withAnimation(IslandSpring.tabSlide) {
-                appState.activeTab = tab
+        let isDragging = dragCoordinator.draggingTab == tab
+
+        HStack(spacing: 5) {
+            tab.iconView(size: isActive ? 12 : 11)
+                .scaleEffect(isActive ? 1.08 : 1.0)
+            if isActive {
+                Text(tab.rawValue)
+                    .font(IslandFont.caption)
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .scale(scale: 0.88)))
             }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: tab.icon)
-                    .font(IslandFont.iconSmall)
-                    .scaleEffect(isActive ? 1.08 : 1.0)
+        }
+        .foregroundColor(isActive ? .white : .white.opacity(0.50))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        // Liquid-Glass matched background slider
+        .background {
+            ZStack {
                 if isActive {
-                    Text(tab.rawValue)
-                        .font(IslandFont.caption)
-                        .lineLimit(1)
-                        .transition(.opacity.combined(with: .scale(scale: 0.88)))
-                }
-            }
-            .foregroundColor(isActive ? .white : .white.opacity(0.50))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            // Liquid-Glass matched background slider
-            .background {
-                ZStack {
-                    if isActive {
-                        Capsule()
-                            .fill(Color.white.opacity(0.18))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.26), lineWidth: 0.5)
-                            )
-                            .shadow(color: .white.opacity(0.08), radius: 4, x: 0, y: -1)
-                            .matchedGeometryEffect(id: "fullHubActiveTabIndicator", in: tabNamespace)
-                    } else {
-                        Capsule()
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.07), lineWidth: 0.5)
-                            )
-                    }
+                    Capsule()
+                        .fill(Color.white.opacity(isDragging ? 0.24 : 0.18))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(isDragging ? 0.60 : 0.26), lineWidth: isDragging ? 1.0 : 0.5)
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.35) : .white.opacity(0.08), radius: isDragging ? 8 : 4, x: 0, y: isDragging ? 2 : -1)
+                        .matchedGeometryEffect(id: "fullHubActiveTabIndicator", in: tabNamespace)
+                } else {
+                    Capsule()
+                        .fill(Color.white.opacity(isDragging ? 0.14 : 0.04))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(isDragging ? 0.45 : 0.07), lineWidth: isDragging ? 1.0 : 0.5)
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.25) : .clear, radius: isDragging ? 6 : 0, x: 0, y: 1)
                 }
             }
         }
-        .buttonStyle(PillButtonStyle())
+        .contentShape(Rectangle())
+        .help("Click to open · Drag to reorder")
+        .islandTabReorderDrag(
+            tab: tab,
+            orderedTabs: visibleTabs,
+            slotStep: slotStep,
+            coordinator: dragCoordinator
+        ) { selectedTab in
+            SoundManager.shared.play(.click)
+            withAnimation(IslandSpring.tabSlide) {
+                appState.activeTab = selectedTab
+            }
+        }
         .animation(IslandSpring.tabSlide, value: isActive)
     }
 }

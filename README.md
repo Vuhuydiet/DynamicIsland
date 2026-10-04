@@ -13,6 +13,7 @@ A native, high-performance macOS Dynamic Island built in Swift and SwiftUI. It s
    - [Timers & Centered Stopwatch](#️-timers--centered-stopwatch)
    - [Clipboard History & Quick Notes](#-clipboard-history--quick-notes)
    - [Condensed System HUD](#-condensed-system-hud)
+   - [App Plugins & Chat Injection (Facebook Messenger)](#-app-plugins--chat-injection-facebook-messenger)
    - [Preferences & Customization](#️-preferences--customization)
 2. [⌨️ Shortcuts & Gestures](#️-shortcuts--gestures)
 3. [🛠️ Building & Running](#️-building--running)
@@ -81,6 +82,15 @@ The header ear hosts a real-time system telemetry readout updated every 2 second
 1. ⚙️ **CPU:** Instantaneous usage percentage with load-adaptive coloring.
 2. 💾 **RAM:** Used memory in gigabytes (e.g. `14.2G`).
 3. 💽 **Disk:** Root volume used space (e.g. `245G`).
+
+---
+
+### 🧩 App Plugins & Chat Injection (Facebook Messenger)
+- **Universal Plugin Protocol (`IslandPlugin`):** Inject any native tool or web application into Dynamic Island with standard components and dynamic viewport sizing.
+- **Official Facebook Messenger Integration:** Seamlessly chat from the notch in a comfortable **740 × 400 pt** view with persistent login, desktop Safari User-Agent, and zoom controls.
+- **In-Notch Live Notification Banners:** HTML5 Web Notifications and title changes are intercepted and displayed as live balloon pills in the compact notch with tap-to-chat navigation.
+- **Authentic App Icon Pipeline:** Bundled 512×512 PNG logos loaded via `PluginIconManager` with automatic fallback to macOS app bundles.
+- 📖 **Full Developer Documentation:** Check out [`docs/PLUGINS.md`](docs/PLUGINS.md) for architecture, component library, and the 5-minute guide to adding apps like WhatsApp, Slack, or ChatGPT.
 
 ---
 

@@ -6,46 +6,22 @@ public struct NotesView: View {
     public var body: some View {
         VStack(spacing: 8) {
             // Header
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "note.text")
-                        .foregroundColor(.yellow)
-                        .font(IslandFont.iconRegular)
-                    Text("Quick Scratchpad")
-                        .font(IslandFont.title)
-                        .foregroundColor(.white)
-                }
-                
-                Spacer()
-                
-                HStack(spacing: 10) {
-                    Button(action: {
+            IslandHeaderView(
+                icon: "note.text",
+                iconColor: .yellow,
+                title: "Quick Scratchpad"
+            ) {
+                HStack(spacing: 8) {
+                    IslandButton("Copy", icon: "doc.on.doc", variant: .secondary, size: .small) {
                         notes.copyAll()
-                    }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "doc.on.doc")
-                                .font(IslandFont.iconMicro)
-                            Text("Copy")
-                        }
-                        .font(IslandFont.caption)
-                        .foregroundColor(.white.opacity(0.8))
                     }
-                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
-                    
-                    Button(action: {
+                    IslandButton("Clear", variant: .ghost, size: .small) {
                         withAnimation(IslandSpring.bouncy) {
                             notes.clear()
                         }
-                    }) {
-                        Text("Clear")
-                            .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.5))
                     }
-                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 4)
             
             // Text Editor
             TextEditor(text: $notes.noteText)

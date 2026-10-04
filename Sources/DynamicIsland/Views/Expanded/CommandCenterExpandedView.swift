@@ -9,6 +9,7 @@ public struct CommandCenterExpandedView: View {
     @ObservedObject var timerManager     = TimerManager.shared
     @ObservedObject var clipboardManager = ClipboardManager.shared
     @ObservedObject var notesManager     = NotesManager.shared
+    @StateObject private var dragCoordinator = TabDragCoordinator()
     @Namespace private var cmdNamespace
 
     private var isNotchMode: Bool {
@@ -114,11 +115,18 @@ public struct CommandCenterExpandedView: View {
 
             // ── Live Contextual Badged Tab Bar ────────────────────────────
             let visibleTabs = IslandTab.allCases.filter { settings.isTabVisible($0) }
-            HStack(spacing: 4) {
+            let totalBarWidth = expandedWidth - 72
+            let spacing: CGFloat = 4
+            let count = max(1, visibleTabs.count)
+            let pillWidth = (totalBarWidth - CGFloat(count - 1) * spacing) / CGFloat(count)
+            let slotStep = pillWidth + spacing
+
+            HStack(spacing: spacing) {
                 ForEach(visibleTabs) { tab in
-                    commandTabPill(tab)
+                    commandTabPill(tab, visibleTabs: visibleTabs, slotStep: slotStep)
                 }
             }
+            .animation(IslandSpring.tabSlide, value: visibleTabs)
             .padding(.horizontal, 36)
             .padding(.bottom, 6)
             .onAppear {
@@ -141,7 +149,7 @@ public struct CommandCenterExpandedView: View {
 
             // ── Tab Content Viewport ──────────────────────────────────────
             IslandTabContentView()
-                .frame(height: 170, alignment: .top)
+                .frame(height: appState.currentContentHeight, alignment: .top)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 6)
         }
@@ -198,51 +206,58 @@ public struct CommandCenterExpandedView: View {
     }
 
     @ViewBuilder
-    private func commandTabPill(_ tab: IslandTab) -> some View {
+    private func commandTabPill(_ tab: IslandTab, visibleTabs: [IslandTab], slotStep: CGFloat) -> some View {
         let isActive = appState.activeTab == tab
-        Button {
-            SoundManager.shared.play(.click)
-            withAnimation(IslandSpring.tabSlide) {
-                appState.activeTab = tab
-            }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: tab.icon)
-                    .font(IslandFont.iconSmall)
+        let isDragging = dragCoordinator.draggingTab == tab
 
-                Text(tab.rawValue)
-                    .font(IslandFont.caption)
-                    .lineLimit(1)
+        HStack(spacing: 5) {
+            tab.iconView(size: 11)
 
-                // Contextual Live Badge
-                badgeForTab(tab)
-            }
-            .foregroundColor(isActive ? .white : .white.opacity(0.50))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background {
-                ZStack {
-                    if isActive {
-                        Capsule()
-                            .fill(Color.white.opacity(0.18))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.26), lineWidth: 0.5)
-                            )
-                            .shadow(color: .white.opacity(0.08), radius: 4, x: 0, y: -1)
-                            .matchedGeometryEffect(id: "commandCenterActiveTabIndicator", in: cmdNamespace)
-                    } else {
-                        Capsule()
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.07), lineWidth: 0.5)
-                            )
-                    }
+            Text(tab.rawValue)
+                .font(IslandFont.caption)
+                .lineLimit(1)
+
+            // Contextual Live Badge
+            badgeForTab(tab)
+        }
+        .foregroundColor(isActive ? .white : .white.opacity(0.50))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background {
+            ZStack {
+                if isActive {
+                    Capsule()
+                        .fill(Color.white.opacity(isDragging ? 0.26 : 0.18))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(isDragging ? 0.60 : 0.26), lineWidth: isDragging ? 1.0 : 0.5)
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.35) : .white.opacity(0.08), radius: isDragging ? 8 : 4, x: 0, y: isDragging ? 2 : -1)
+                        .matchedGeometryEffect(id: "commandCenterActiveTabIndicator", in: cmdNamespace)
+                } else {
+                    Capsule()
+                        .fill(Color.white.opacity(isDragging ? 0.14 : 0.04))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(isDragging ? 0.45 : 0.07), lineWidth: isDragging ? 1.0 : 0.5)
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.25) : .clear, radius: isDragging ? 6 : 0, x: 0, y: 1)
                 }
             }
         }
-        .buttonStyle(PillButtonStyle())
+        .contentShape(Rectangle())
+        .help("Click to open · Drag to reorder")
+        .islandTabReorderDrag(
+            tab: tab,
+            orderedTabs: visibleTabs,
+            slotStep: slotStep,
+            coordinator: dragCoordinator
+        ) { selectedTab in
+            SoundManager.shared.play(.click)
+            withAnimation(IslandSpring.tabSlide) {
+                appState.activeTab = selectedTab
+            }
+        }
         .animation(IslandSpring.tabSlide, value: isActive)
     }
 
@@ -295,6 +310,26 @@ public struct CommandCenterExpandedView: View {
                 Circle()
                     .fill(Color.yellow)
                     .frame(width: 4, height: 4)
+            }
+
+        case .messenger:
+            if let badge = MessengerPlugin.shared.tabBadge, !badge.isEmpty {
+                Text(badge)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(MessengerPlugin.messengerBlue))
+            }
+
+        case .plugin(let id):
+            if let badge = PluginManager.shared.plugin(for: id)?.tabBadge, !badge.isEmpty {
+                Text(badge)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.blue))
             }
         }
     }

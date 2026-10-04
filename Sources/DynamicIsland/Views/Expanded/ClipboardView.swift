@@ -7,41 +7,14 @@ public struct ClipboardView: View {
         VStack(spacing: 8) {
             // Search & Clear Bar
             HStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.white.opacity(0.4))
-                        .font(IslandFont.iconRegular)
-                    
-                    TextField("Search clipboard history...", text: $clipboard.searchText)
-                        .textFieldStyle(.plain)
-                        .font(IslandFont.body)
-                        .foregroundColor(.white)
-                    
-                    if !clipboard.searchText.isEmpty {
-                        Button(action: { clipboard.searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.white.opacity(0.4))
-                                .font(IslandFont.iconRegular)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                IslandSearchField(text: $clipboard.searchText, placeholder: "Search clipboard history...")
                 
                 if !clipboard.history.isEmpty {
-                    Button(action: {
+                    IslandButton("Clear", variant: .ghost, size: .small) {
                         withAnimation(IslandSpring.bouncy) {
                             clipboard.clearHistory()
                         }
-                    }) {
-                        Text("Clear")
-                            .font(IslandFont.caption)
-                            .foregroundColor(.white.opacity(0.6))
                     }
-                    .buttonStyle(BouncyButtonStyle(scaleAmount: 0.90))
                 }
             }
             .padding(.horizontal, 14)

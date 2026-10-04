@@ -7,6 +7,7 @@ public struct CompactIslandView: View {
     @ObservedObject var dropShelfManager = DropShelfManager.shared
     @ObservedObject var detector = NotchDetector.shared
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject var notifManager = PluginNotificationManager.shared
 
     // Drives the bell wobble on the compact notch
     @State private var bellWobble = false
@@ -78,6 +79,11 @@ public struct CompactIslandView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             SoundManager.shared.play(.click)
+            if let notif = notifManager.activeNotification {
+                notifManager.dismissActive()
+                appState.expand(tab: notif.tab)
+                return
+            }
             if settings.isTabVisible(.timer) && timerManager.isTimerFinished {
                 timerManager.mode = .timer
                 appState.expand(tab: .timer)

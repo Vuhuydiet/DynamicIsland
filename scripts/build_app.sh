@@ -33,11 +33,18 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools xcrun swiftc \
     -framework AudioToolbox \
     -framework UserNotifications \
     -framework ServiceManagement \
+    -framework WebKit \
     $SWIFT_FILES \
     -o "$MACOS_DIR/$APP_NAME"
 
 if [ -f "$DIR/scripts/AppIcon.icns" ]; then
     cp "$DIR/scripts/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+fi
+
+if [ -d "$DIR/Resources/PluginIcons" ]; then
+    echo "🎨 Copying PluginIcons into bundle..."
+    mkdir -p "$RESOURCES_DIR/PluginIcons"
+    cp -R "$DIR/Resources/PluginIcons/"* "$RESOURCES_DIR/PluginIcons/"
 fi
 
 echo "📝 Creating Info.plist..."
@@ -70,6 +77,11 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
     <key>NSAppleEventsUsageDescription</key>
     <string>Dynamic Island uses Apple Events to display and control now-playing media from Apple Music and Spotify.</string>
     <key>NSUserNotificationAlertStyle</key>

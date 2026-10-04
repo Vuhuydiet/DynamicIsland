@@ -2,13 +2,38 @@ import Foundation
 import SwiftUI
 import Combine
 
-public enum IslandTab: String, CaseIterable, Identifiable, Sendable {
-    case media = "Media"
-    case timer = "Timer"
-    case clipboard = "Clipboard"
-    case notes = "Notes"
+public enum IslandTab: Hashable, Identifiable, Sendable, CaseIterable {
+    case media
+    case timer
+    case clipboard
+    case notes
+    case messenger
+    case plugin(id: String)
     
-    public var id: String { rawValue }
+    public var id: String {
+        switch self {
+        case .media: return "Media"
+        case .timer: return "Timer"
+        case .clipboard: return "Clipboard"
+        case .notes: return "Notes"
+        case .messenger: return "Messenger"
+        case .plugin(let id): return id
+        }
+    }
+    
+    public var rawValue: String { id }
+    
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "Media": self = .media
+        case "Timer": self = .timer
+        case "Clipboard": self = .clipboard
+        case "Notes": self = .notes
+        case "Messenger": self = .messenger
+        default:
+            self = .plugin(id: rawValue)
+        }
+    }
     
     public var icon: String {
         switch self {
@@ -16,7 +41,33 @@ public enum IslandTab: String, CaseIterable, Identifiable, Sendable {
         case .timer: return "timer"
         case .clipboard: return "doc.on.clipboard.fill"
         case .notes: return "note.text"
+        case .messenger: return MessengerPlugin.shared.icon
+        case .plugin(let id):
+            return PluginManager.shared.plugin(for: id)?.icon ?? "puzzlepiece.extension"
         }
+    }
+    
+    public func iconView(size: CGFloat = 11) -> AnyView {
+        PluginIconManager.shared.iconView(for: self, size: size)
+    }
+        
+    public static var builtInTabs: [IslandTab] {
+        [.media, .timer, .clipboard, .notes, .messenger]
+    }
+    
+    public static var defaultTabs: [IslandTab] {
+        var tabs: [IslandTab] = [.media, .timer, .clipboard, .notes]
+        if MessengerPlugin.shared.isEnabled {
+            tabs.append(.messenger)
+        }
+        for plugin in PluginManager.shared.activePlugins where plugin.id != MessengerPlugin.pluginID {
+            tabs.append(.plugin(id: plugin.id))
+        }
+        return tabs
+    }
+    
+    public static var allCases: [IslandTab] {
+        SettingsManager.shared.orderedTabs(from: defaultTabs)
     }
 }
 
@@ -25,10 +76,45 @@ public class AppState: ObservableObject {
     
     @Published public var isExpanded: Bool = false
     @Published public var isPinned: Bool = false
-    @Published public var activeTab: IslandTab = .media
+    
+    /// Active tab. All lifecycle dispatch and plugin audio is driven from `didSet`
+    /// rather than from each assignment site, so a new shell, timer path, or deep
+    /// link cannot forget to notify plugins or play their interaction cue.
+    @Published public var activeTab: IslandTab = .media {
+        didSet {
+            guard activeTab != oldValue else { return }
+            notifyTabLifecycleChange(from: oldValue, to: activeTab)
+        }
+    }
+    
     @Published public var isHovering: Bool = false
     @Published public var isDraggingOver: Bool = false
     @Published public var isFullScreen: Bool = false
+    
+    private func notifyTabLifecycleChange(from oldTab: IslandTab, to newTab: IslandTab) {
+        plugin(for: oldTab)?.onTabDeselected()
+        let newPlugin = plugin(for: newTab)
+        newPlugin?.onTabSelected()
+        
+        // Play the destination plugin's configured interaction cue. This is additive
+        // to the global tab-switch click, so plugins are audible even if the user has
+        // disabled the generic tab-switch sound.
+        if let plugin = newPlugin {
+            SoundManager.shared.playPluginCue(.interaction, pluginId: plugin.id)
+        }
+    }
+    
+    /// Resolves the plugin that owns a tab, if any.
+    private func plugin(for tab: IslandTab) -> (any IslandPlugin)? {
+        switch tab {
+        case .messenger:
+            return MessengerPlugin.shared
+        case .plugin(let id):
+            return PluginManager.shared.plugin(for: id)
+        default:
+            return nil
+        }
+    }
     
     private var hoverWorkItem: DispatchWorkItem?
     private var unhoverWorkItem: DispatchWorkItem?
@@ -66,35 +152,55 @@ public class AppState: ObservableObject {
     public static let expandedWidth: CGFloat = 560.0
     
     public var expandedWidth: CGFloat {
+        let baseWidth: CGFloat
         switch SettingsManager.shared.openedIslandStyle {
-        case .defaultStyle:   return 560.0
-        case .bottomDeck:     return 560.0
-        case .compactHUD:     return 490.0
-        case .floatingCards:  return 560.0
-        case .commandCenter:  return 580.0
+        case .defaultStyle:   baseWidth = 560.0
+        case .bottomDeck:     baseWidth = 560.0
+        case .compactHUD:     baseWidth = 490.0
+        case .floatingCards:  baseWidth = 560.0
+        case .commandCenter:  baseWidth = 580.0
+        }
+        
+        switch activeTab {
+        case .messenger:
+            let appWidth = MessengerPlugin.shared.preferredIslandWidth ?? 740.0
+            return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(appWidth, 660.0) : appWidth
+        case .plugin(let id):
+            if let plugin = PluginManager.shared.plugin(for: id) {
+                let appWidth = plugin.preferredIslandWidth ?? 740.0
+                return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(appWidth, 660.0) : appWidth
+            }
+            return baseWidth
+        default:
+            return baseWidth
         }
     }
     
     public var compactEarWidth: CGFloat {
         let base: CGFloat
         let settings = SettingsManager.shared
-        switch settings.closedNotchStyle {
-        case .defaultStyle:
-            let timerVisible = settings.isTabVisible(.timer)
-            let mediaVisible = settings.isTabVisible(.media)
-            
-            if timerVisible && TimerManager.shared.isTimerFinished {
-                base = 65.0
-            } else if timerVisible && TimerManager.shared.isTimerRunning {
-                base = TimerManager.shared.remainingSeconds >= 3600 ? 78.0 : 65.0
-            } else if timerVisible && (TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0) {
-                base = TimerManager.shared.stopwatchElapsed >= 3600 ? 82.0 : 70.0
-            } else if mediaVisible && (MediaManager.shared.currentTrack.isPlaying || (MediaManager.shared.currentTrack.source != .none && MediaManager.shared.currentTrack.title != "No Media Playing")) {
-                base = 50.0 // Media: icon only left, visualizer/pause right
-            } else if !DropShelfManager.shared.items.isEmpty {
-                base = 50.0
-            } else {
-                base = 56.0 // Idle: Apple logo left, battery % right
+        
+        if PluginNotificationManager.shared.activeNotification != nil {
+            base = 135.0 // Expands both ears to show app icon + sender and message preview
+        } else {
+            switch settings.closedNotchStyle {
+            case .defaultStyle:
+                let timerVisible = settings.isTabVisible(.timer)
+                let mediaVisible = settings.isTabVisible(.media)
+                
+                if timerVisible && TimerManager.shared.isTimerFinished {
+                    base = 65.0
+                } else if timerVisible && TimerManager.shared.isTimerRunning {
+                    base = TimerManager.shared.remainingSeconds >= 3600 ? 78.0 : 65.0
+                } else if timerVisible && (TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0) {
+                    base = TimerManager.shared.stopwatchElapsed >= 3600 ? 82.0 : 70.0
+                } else if mediaVisible && (MediaManager.shared.currentTrack.isPlaying || (MediaManager.shared.currentTrack.source != .none && MediaManager.shared.currentTrack.title != "No Media Playing")) {
+                    base = 50.0 // Media: icon only left, visualizer/pause right
+                } else if !DropShelfManager.shared.items.isEmpty {
+                    base = 50.0
+                } else {
+                    base = 56.0 // Idle: Apple logo left, battery % right
+                }
             }
         }
         return base + CGFloat(settings.customWidthOffset) / 2.0
@@ -114,6 +220,9 @@ public class AppState: ObservableObject {
             let notchW = max(170.0, detector.currentNotch.notchWidth)
             return notchW + (compactEarWidth * 2.0) + (NotchIslandShape.compactFlareWidth * 2.0)
         } else {
+            if PluginNotificationManager.shared.activeNotification != nil {
+                return 440.0 + CGFloat(settings.customWidthOffset)
+            }
             let isStopwatchActive = TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0
             let mediaActive = settings.isTabVisible(.media) && MediaManager.shared.currentTrack.isPlaying
             let timerActive = settings.isTabVisible(.timer) && (TimerManager.shared.isTimerRunning || isStopwatchActive)
@@ -132,23 +241,32 @@ public class AppState: ObservableObject {
         }
     }
     
+    public var currentContentHeight: CGFloat {
+        switch activeTab {
+        case .messenger:
+            let baseH = MessengerPlugin.shared.preferredContentHeight
+            return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(baseH, 360.0) : baseH
+        case .plugin(let id):
+            let baseH = PluginManager.shared.plugin(for: id)?.preferredContentHeight ?? 400.0
+            return SettingsManager.shared.openedIslandStyle == .compactHUD ? min(baseH, 360.0) : baseH
+        default:
+            return SettingsManager.shared.openedIslandStyle == .compactHUD ? 165.0 : 170.0
+        }
+    }
+    
     public func expandedHeight(isNotchMode: Bool, notchHeight: CGFloat) -> CGFloat {
         let notchTopInset: CGFloat = isNotchMode ? max(34.0, notchHeight) : 8.0
+        let contentH = currentContentHeight
         switch SettingsManager.shared.openedIslandStyle {
         case .defaultStyle:
-            let contentH: CGFloat = 170.0
             return notchTopInset + 38.0 + contentH + 16.0
         case .bottomDeck:
-            let contentH: CGFloat = 170.0
             return notchTopInset + 38.0 + contentH + 46.0 + 16.0
         case .compactHUD:
-            let contentH: CGFloat = 165.0
             return notchTopInset + 32.0 + contentH + 14.0
         case .floatingCards:
-            let contentH: CGFloat = 170.0
             return notchTopInset + 42.0 + contentH + 20.0
         case .commandCenter:
-            let contentH: CGFloat = 170.0
             return notchTopInset + 40.0 + contentH + 16.0
         }
     }

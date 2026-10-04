@@ -4,6 +4,7 @@ public struct FloatingCardsExpandedView: View {
     @ObservedObject var appState  = AppState.shared
     @ObservedObject var detector  = NotchDetector.shared
     @ObservedObject var settings  = SettingsManager.shared
+    @StateObject private var dragCoordinator = TabDragCoordinator()
     @Namespace private var chipNamespace
 
     private var isNotchMode: Bool {
@@ -103,11 +104,18 @@ public struct FloatingCardsExpandedView: View {
 
             // ── Floating Tab Chips ────────────────────────────────────────
             let visibleTabs = IslandTab.allCases.filter { settings.isTabVisible($0) }
-            HStack(spacing: 6) {
+            let totalBarWidth = expandedWidth - 72
+            let spacing: CGFloat = 6
+            let count = max(1, visibleTabs.count)
+            let pillWidth = (totalBarWidth - CGFloat(count - 1) * spacing) / CGFloat(count)
+            let slotStep = pillWidth + spacing
+
+            HStack(spacing: spacing) {
                 ForEach(visibleTabs) { tab in
-                    floatingTabChip(tab)
+                    floatingTabChip(tab, visibleTabs: visibleTabs, slotStep: slotStep)
                 }
             }
+            .animation(IslandSpring.tabSlide, value: visibleTabs)
             .padding(.horizontal, 36)
             .padding(.top, 4)
             .padding(.bottom, 8)
@@ -145,7 +153,7 @@ public struct FloatingCardsExpandedView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
             }
-            .frame(height: 170, alignment: .top)
+            .frame(height: appState.currentContentHeight, alignment: .top)
             .padding(.horizontal, 30)
             .padding(.bottom, 8)
         }
@@ -183,63 +191,70 @@ public struct FloatingCardsExpandedView: View {
     }
 
     @ViewBuilder
-    private func floatingTabChip(_ tab: IslandTab) -> some View {
+    private func floatingTabChip(_ tab: IslandTab, visibleTabs: [IslandTab], slotStep: CGFloat) -> some View {
         let isActive = appState.activeTab == tab
-        Button {
-            SoundManager.shared.play(.click)
-            withAnimation(IslandSpring.tabSlide) {
-                appState.activeTab = tab
+        let isDragging = dragCoordinator.draggingTab == tab
+
+        HStack(spacing: 5) {
+            tab.iconView(size: 11)
+            if isActive {
+                Text(tab.rawValue)
+                    .font(IslandFont.caption)
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .scale(scale: 0.88)))
             }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: tab.icon)
-                    .font(IslandFont.iconSmall)
+        }
+        .foregroundColor(isActive ? .white : .white.opacity(0.50))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background {
+            ZStack {
                 if isActive {
-                    Text(tab.rawValue)
-                        .font(IslandFont.caption)
-                        .lineLimit(1)
-                        .transition(.opacity.combined(with: .scale(scale: 0.88)))
-                }
-            }
-            .foregroundColor(isActive ? .white : .white.opacity(0.50))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background {
-                ZStack {
-                    if isActive {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.24), Color.white.opacity(0.14)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(isDragging ? 0.32 : 0.24), Color.white.opacity(isDragging ? 0.20 : 0.14)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(isDragging ? 0.55 : 0.35), Color.white.opacity(0.15)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: isDragging ? 1.0 : 0.75
                                 )
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [Color.white.opacity(0.35), Color.white.opacity(0.15)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 0.75
-                                    )
-                            )
-                            .shadow(color: Color.accentColor.opacity(0.25), radius: 6, x: 0, y: 2)
-                            .matchedGeometryEffect(id: "floatingCardsActiveTabIndicator", in: chipNamespace)
-                    } else {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(Color.white.opacity(0.07), lineWidth: 0.5)
-                            )
-                    }
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.30) : Color.accentColor.opacity(0.25), radius: isDragging ? 8 : 6, x: 0, y: 2)
+                        .matchedGeometryEffect(id: "floatingCardsActiveTabIndicator", in: chipNamespace)
+                } else {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(isDragging ? 0.14 : 0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(Color.white.opacity(isDragging ? 0.45 : 0.07), lineWidth: isDragging ? 1.0 : 0.5)
+                        )
+                        .shadow(color: isDragging ? .white.opacity(0.25) : .clear, radius: isDragging ? 6 : 0, x: 0, y: 1)
                 }
             }
         }
-        .buttonStyle(PillButtonStyle())
+        .contentShape(Rectangle())
+        .help("Click to open · Drag to reorder")
+        .islandTabReorderDrag(
+            tab: tab,
+            orderedTabs: visibleTabs,
+            slotStep: slotStep,
+            coordinator: dragCoordinator
+        ) { selectedTab in
+            SoundManager.shared.play(.click)
+            withAnimation(IslandSpring.tabSlide) {
+                appState.activeTab = selectedTab
+            }
+        }
         .animation(IslandSpring.tabSlide, value: isActive)
     }
 }

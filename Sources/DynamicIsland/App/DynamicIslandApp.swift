@@ -15,8 +15,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         // Run as accessory app (no dock icon, sits in menu bar & floating island)
         NSApp.setActivationPolicy(.accessory)
         
+        // Initialize plugins and app integrations
+        PluginManager.shared.setup()
+        
         // Become the UNUserNotificationCenter delegate so banners show while app is active
         UNUserNotificationCenter.current().delegate = self
+        
+        // Initialize plugin notifications coordinator
+        _ = PluginNotificationManager.shared
         
         // Initialize window and notch detector
         _ = NotchDetector.shared
@@ -46,14 +52,23 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         completionHandler([.banner, .sound, .badge])
     }
     
-    /// Handle notification tap – expand island to Timer tab.
+    /// Handle notification tap – expand island to target plugin or timer.
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let userInfo = response.notification.request.content.userInfo
         DispatchQueue.main.async {
-            AppState.shared.expand(tab: .timer)
+            if let pluginId = userInfo["pluginId"] as? String {
+                if pluginId == MessengerPlugin.pluginID {
+                    AppState.shared.expand(tab: .messenger)
+                } else {
+                    AppState.shared.expand(tab: .plugin(id: pluginId))
+                }
+            } else {
+                AppState.shared.expand(tab: .timer)
+            }
         }
         completionHandler()
     }

@@ -4,6 +4,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
     case general = "General"
     case animations = "Animations"
     case behavior = "Behavior & Tabs"
+    case plugins = "Plugins"
     case sound = "Sound Effects"
     case geometry = "Geometry & Notch"
     case shortcuts = "Shortcuts"
@@ -16,6 +17,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "gearshape.fill"
         case .animations: return "waveform.path"
         case .behavior: return "slider.horizontal.2.square"
+        case .plugins: return "puzzlepiece.extension.fill"
         case .sound: return "speaker.wave.2.fill"
         case .geometry: return "macbook.and.iphone"
         case .shortcuts: return "command"
@@ -28,6 +30,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return .blue
         case .animations: return .purple
         case .behavior: return .teal
+        case .plugins: return .cyan
         case .sound: return .pink
         case .geometry: return .orange
         case .shortcuts: return .indigo
@@ -306,6 +309,8 @@ public struct SettingsWindowView: View {
                             AnimationsSettingsTab()
                         case .behavior:
                             BehaviorSettingsTab()
+                        case .plugins:
+                            PluginsSettingsTab()
                         case .sound:
                             SoundSettingsTab()
                         case .geometry:
@@ -899,6 +904,7 @@ public struct AnimationPlaygroundView: View {
 
 public struct BehaviorSettingsTab: View {
     @ObservedObject var settings = SettingsManager.shared
+    @StateObject private var tabDragCoordinator = TabDragCoordinator()
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -976,42 +982,163 @@ public struct BehaviorSettingsTab: View {
                 }
             }
 
-            // 3. Tab Visibility
+            // 3. Tab Visibility & Ordering
+            let allTabs = IslandTab.allCases
             SettingsCard(
-                title: "Visible Island Tabs",
-                icon: "rectangle.3.group.fill",
+                title: "Island Tabs & Order",
+                icon: "arrow.up.arrow.down.square.fill",
                 iconColor: .indigo,
-                subtitle: "Enable or hide built-in tool tabs. At least one tab must remain active."
+                subtitle: "Drag a tab (or use the arrows) to rearrange. Toggle visibility independently.",
+                trailing: AnyView(
+                    Button(action: {
+                        withAnimation(IslandSpring.tabSlide) {
+                            settings.resetTabOrder()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Reset Order")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .foregroundColor(settings.customTabOrder.isEmpty ? .secondary.opacity(0.4) : .primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(settings.customTabOrder.isEmpty ? 0.02 : 0.06))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(settings.customTabOrder.isEmpty)
+                    .help("Reset tabs to original default order")
+                )
             ) {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(IslandTab.allCases.enumerated()), id: \.element.id) { idx, tab in
-                        if idx > 0 { Divider() }
-                        SettingsRow(title: tab.rawValue) {
-                            HStack(spacing: 8) {
-                                Image(systemName: tab.icon)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.accentColor)
-                                    .frame(width: 20)
+                    ForEach(Array(allTabs.enumerated()), id: \.element.id) { idx, tab in
+                        if idx > 0 { Divider().padding(.vertical, 2) }
+                        let isDragging = tabDragCoordinator.draggingTab == tab
+                        HStack(spacing: 10) {
+                            // 0. Drag handle
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.secondary.opacity(isDragging ? 0.9 : 0.55))
+                                .frame(width: 18, height: 22)
+                                .contentShape(Rectangle())
+                                .help("Drag to reorder \(tab.rawValue)")
+                                .gesture(
+                                    DragGesture(minimumDistance: 3)
+                                        .onChanged { value in
+                                            tabDragCoordinator.onDragChanged(
+                                                tab: tab,
+                                                translation: value.translation.height,
+                                                orderedTabs: allTabs,
+                                                slotStep: 44,
+                                                visibleOnly: false
+                                            )
+                                        }
+                                        .onEnded { value in
+                                            tabDragCoordinator.onDragEnded(
+                                                tab: tab,
+                                                translation: value.translation.height
+                                            ) { _ in }
+                                        }
+                                )
 
-                                Toggle("", isOn: Binding(
-                                    get: { settings.isTabVisible(tab) },
-                                    set: { visible in
-                                        if visible {
-                                            settings.hiddenTabs.remove(tab.rawValue)
-                                        } else {
-                                            let remaining = IslandTab.allCases.filter { settings.isTabVisible($0) }
-                                            if remaining.count > 1 {
-                                                settings.hiddenTabs.insert(tab.rawValue)
-                                            }
+                            // 1. Order Index Badge
+                            Text("#\(idx + 1)")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 24, height: 20)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                            // 2. Tab Icon
+                            tab.iconView(size: 15)
+                                .frame(width: 20, height: 20)
+
+                            // 3. Tab Title & Subtitle
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(tab.rawValue)
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundColor(settings.isTabVisible(tab) ? .primary : .secondary)
+
+                                Text(tabSubtitle(for: tab))
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            // 4. Move Up / Down Arrow Buttons
+                            HStack(spacing: 4) {
+                                Button(action: {
+                                    withAnimation(IslandSpring.tabSlide) {
+                                        settings.moveTabUp(tab)
+                                    }
+                                }) {
+                                    Image(systemName: "chevron.up")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(idx > 0 ? .primary : .secondary.opacity(0.25))
+                                        .frame(width: 22, height: 22)
+                                        .background(Color.white.opacity(idx > 0 ? 0.08 : 0.02))
+                                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(idx == 0)
+                                .help("Move \(tab.rawValue) up")
+
+                                Button(action: {
+                                    withAnimation(IslandSpring.tabSlide) {
+                                        settings.moveTabDown(tab)
+                                    }
+                                }) {
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(idx < allTabs.count - 1 ? .primary : .secondary.opacity(0.25))
+                                        .frame(width: 22, height: 22)
+                                        .background(Color.white.opacity(idx < allTabs.count - 1 ? 0.08 : 0.02))
+                                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(idx >= allTabs.count - 1)
+                                .help("Move \(tab.rawValue) down")
+                            }
+
+                            // 5. Divider
+                            Rectangle()
+                                .fill(Color.white.opacity(0.12))
+                                .frame(width: 1, height: 16)
+                                .padding(.horizontal, 4)
+
+                            // 6. Visibility Toggle
+                            Toggle("", isOn: Binding(
+                                get: { settings.isTabVisible(tab) },
+                                set: { visible in
+                                    if visible {
+                                        settings.hiddenTabs.remove(tab.rawValue)
+                                    } else {
+                                        let remaining = IslandTab.allCases.filter { settings.isTabVisible($0) }
+                                        if remaining.count > 1 {
+                                            settings.hiddenTabs.insert(tab.rawValue)
                                         }
                                     }
-                                ))
-                                .labelsHidden()
-                            }
+                                }
+                            ))
+                            .labelsHidden()
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.white.opacity(isDragging ? 0.08 : 0))
+                        )
+                        .offset(y: isDragging ? tabDragCoordinator.dragOffset : 0)
+                        .zIndex(isDragging ? 20 : 1)
+                        .scaleEffect(isDragging ? 1.02 : 1.0)
+                        .shadow(color: isDragging ? .black.opacity(0.18) : .clear, radius: isDragging ? 8 : 0, y: 2)
                     }
                 }
+                .animation(IslandSpring.tabSlide, value: allTabs.map(\.id))
             }
 
             // 4. File Drop Shelf
@@ -1040,12 +1167,33 @@ public struct BehaviorSettingsTab: View {
             }
         }
     }
+
+    private func tabSubtitle(for tab: IslandTab) -> String {
+        switch tab {
+        case .media:
+            return "Now playing audio, album art & controls"
+        case .timer:
+            return "Multi-timer countdowns & stopwatch laps"
+        case .clipboard:
+            return "Clipboard history & quick copy items"
+        case .notes:
+            return "Persistent scratchpad & quick notes"
+        case .messenger:
+            return "Facebook Messenger web app & live chats"
+        case .plugin(let id):
+            if let plugin = PluginManager.shared.plugin(for: id) {
+                return plugin.subtitle
+            }
+            return "External island plugin (\(id))"
+        }
+    }
 }
 
 // MARK: - Tab 4: Sound Settings Tab
 
 public struct SoundSettingsTab: View {
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject var pluginManager = PluginManager.shared
     
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1168,7 +1316,153 @@ public struct SoundSettingsTab: View {
                     }
                 }
             }
+            
+            // Per-Plugin Audio Card — generated from the plugin registry so that any
+            // plugin (present or future) is configurable with sound automatically.
+            if settings.soundEffectsEnabled && !pluginManager.plugins.isEmpty {
+                SettingsCard(
+                    title: "Plugin Sounds",
+                    icon: "puzzlepiece.extension.fill",
+                    iconColor: .cyan,
+                    subtitle: "Each plugin has its own audio profile. Mute a plugin or change the cues it plays for alerts and interactions."
+                ) {
+                    VStack(spacing: 10) {
+                        ForEach(pluginManager.plugins, id: \.id) { plugin in
+                            PluginSoundSettingsRow(
+                                pluginID: plugin.id,
+                                pluginName: plugin.name,
+                                pluginIcon: plugin.icon,
+                                defaultProfile: plugin.defaultSoundProfile
+                            )
+                            
+                            if plugin.id != pluginManager.plugins.last?.id {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+/// Audio controls for a single plugin, derived entirely from
+/// `IslandPluginSoundEvent.allCases` so it works for any plugin.
+public struct PluginSoundSettingsRow: View {
+    @ObservedObject private var settings = SettingsManager.shared
+    public let pluginID: String
+    public let pluginName: String
+    public let pluginIcon: String
+    public let defaultProfile: IslandPluginSoundProfile
+
+    public var body: some View {
+        let profile = settings.soundProfile(forPlugin: pluginID)
+        let isOverridden = settings.pluginSoundOverrides[pluginID] != nil
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: pluginIcon)
+                    .font(.system(size: 12))
+                    .foregroundColor(.cyan)
+                    .frame(width: 16)
+
+                Text(pluginName)
+                    .font(.system(size: 12.5, weight: .semibold))
+                
+                Spacer()
+                
+                if isOverridden {
+                    Button("Reset") {
+                        settings.resetPluginSound(pluginID)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .help("Restore this plugin's default audio profile")
+                }
+                
+                Toggle("", isOn: Binding(
+                    get: { profile.isEnabled },
+                    set: { newValue in
+                        settings.updatePluginSound(pluginID) { $0.isEnabled = newValue }
+                    }
+                ))
+                .labelsHidden()
+            }
+            
+            if profile.isEnabled {
+                HStack(spacing: 10) {
+                    Text("Volume:")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    
+                    Slider(
+                        value: Binding(
+                            get: { profile.volume },
+                            set: { newValue in
+                                settings.updatePluginSound(pluginID) { $0.volume = newValue }
+                            }
+                        ),
+                        in: 0.0...1.0,
+                        step: 0.05
+                    )
+                    .frame(maxWidth: 160)
+                    
+                    Text(String(format: "%.0f%%", profile.volume * 100))
+                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 34, alignment: .leading)
+                    
+                    Spacer()
+                }
+                .padding(.leading, 24)
+                
+                VStack(spacing: 5) {
+                    ForEach(IslandPluginSoundEvent.allCases, id: \.self) { event in
+                        HStack(spacing: 8) {
+                            Text(event.displayName)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .frame(width: 108, alignment: .leading)
+                            
+                            Picker("", selection: Binding(
+                                get: { profile.cue(for: event) },
+                                set: { newValue in
+                                    settings.updatePluginSound(pluginID) { $0.setCue(newValue, for: event) }
+                                }
+                            )) {
+                                ForEach(IslandSoundCue.allCases, id: \.self) { cue in
+                                    Text(cue.displayName).tag(cue)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 130)
+                            
+                            Button {
+                                SoundManager.shared.playPluginCue(event, pluginId: pluginID)
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 7.5))
+                                    Text("Test")
+                                        .font(.system(size: 10.5, weight: .medium))
+                                }
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(Color(NSColor.controlColor))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.leading, 24)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -2045,5 +2339,185 @@ public struct OpenedOptionPreviewCard: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.white.opacity(0.05))
         )
+    }
+}
+
+// MARK: - Tab: Plugins & App Integrations
+
+public struct PluginsSettingsTab: View {
+    @ObservedObject var pluginManager = PluginManager.shared
+    @ObservedObject var messenger = MessengerPlugin.shared
+    @ObservedObject var appState = AppState.shared
+    
+    public init() {}
+    
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            // 1. Overview Card
+            SettingsCard(
+                title: "App Plugins & Injections",
+                icon: "puzzlepiece.extension.fill",
+                iconColor: .cyan,
+                subtitle: "Extend your Dynamic Island by injecting chat apps, web services, and custom tools directly into the notch."
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "app.badge.checkmark.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.cyan)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Standardized Plugin System")
+                                .font(.system(size: 13, weight: .bold))
+                            Text("Plugins use standardized island components, custom viewport heights, tab badges, and closed-notch ear accessories.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.cyan.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+            
+            // 2. Facebook Messenger Card
+            SettingsCard(
+                title: "Facebook Messenger",
+                icon: "bubble.left.and.bubble.right.fill",
+                iconColor: MessengerPlugin.messengerBlue,
+                subtitle: "Instant messaging directly inside the opened notch with persistent login, unread badges, and fast chat access."
+            ) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 12) {
+                        MessengerAppIconView(size: 38, withSquircle: true)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Messenger for Notch")
+                                    .font(.system(size: 13, weight: .bold))
+                                Text("v1.0.0")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color.secondary.opacity(0.15))
+                                    .clipShape(Capsule())
+                            }
+                            Text("Status: \(messenger.isEnabled ? "Active & Ready" : "Disabled") • Expanded Size: Large (740 × 400 pt)")
+                                .font(.system(size: 11))
+                                .foregroundColor(messenger.isEnabled ? .green : .secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: $messenger.isEnabled)
+                            .labelsHidden()
+                    }
+                    
+                    if messenger.isEnabled {
+                        Divider()
+                        
+                        HStack(spacing: 12) {
+                            Button {
+                                appState.expand(tab: .messenger)
+                            } label: {
+                                Label("Open Messenger in Notch", systemImage: "arrow.up.forward.app")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MessengerPlugin.messengerBlue)
+                            
+                            Button {
+                                messenger.webController.openInExternalBrowser()
+                            } label: {
+                                Label("Open in Browser", systemImage: "arrow.up.right")
+                            }
+                            
+                            Button {
+                                messenger.webController.reload()
+                            } label: {
+                                Label("Reload", systemImage: "arrow.clockwise")
+                            }
+                            
+                            Button {
+                                PluginNotificationManager.shared.post(
+                                    pluginId: MessengerPlugin.pluginID,
+                                    title: "Sarah Jenkins",
+                                    body: "Hey! Did you see the new notification update?",
+                                    subtitle: "Facebook Messenger"
+                                )
+                            } label: {
+                                Label("Test Notification", systemImage: "bell.badge")
+                            }
+                            .help("Send a test notification banner to the notch")
+                            
+                            Spacer()
+                            
+                            HStack(spacing: 6) {
+                                Text("Zoom:")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                
+                                Button {
+                                    messenger.webController.zoomOut()
+                                } label: {
+                                    Image(systemName: "minus")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .buttonStyle(.bordered)
+                                .help("Zoom Out")
+                                
+                                Text(String(format: "%.0f%%", messenger.webController.currentZoom * 100))
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .frame(width: 40)
+                                
+                                Button {
+                                    messenger.webController.zoomIn()
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .buttonStyle(.bordered)
+                                .help("Zoom In")
+                            }
+                            
+                            Button(role: .destructive) {
+                                messenger.webController.clearCache()
+                            } label: {
+                                Label("Log Out", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 3. Developer Integration Guide Card
+            SettingsCard(
+                title: "Inject Your Own App (Developer API)",
+                icon: "chevron.left.forwardslash.chevron.right",
+                iconColor: .purple,
+                subtitle: "Integrate other web apps (Slack, WhatsApp, Discord, ChatGPT) or native tools using the IslandPlugin interface."
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Implementing `IslandPlugin` or `IslandWebPlugin` takes under 20 lines of code:")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    
+                    Text("""
+                    // Example: Injecting any web application into Dynamic Island
+                    let config = IslandWebConfiguration(
+                        initialURL: URL(string: "https://web.whatsapp.com/")!,
+                        zoomFactor: 0.88
+                    )
+                    let controller = IslandWebController(configuration: config)
+                    PluginManager.shared.register(plugin: myCustomPlugin)
+                    """)
+                        .font(.system(size: 11, design: .monospaced))
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.black.opacity(0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+            }
+        }
     }
 }
