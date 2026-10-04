@@ -169,34 +169,22 @@ public class AppState: ObservableObject {
         }
     }
     
+    /// Fixed ear width for the closed notch, in points.
+    ///
+    /// The closed notch is a fixed-size window: its width is a property of the
+    /// hardware notch plus this constant, never of the current activity. Sizing
+    /// the ears per-state meant an incoming Messenger (or any plugin)
+    /// notification ballooned the island to 135pt per ear, which read as the
+    /// notch glitching and ballooning rather than as a notification arriving.
+    ///
+    /// Left/right ear content is expected to adapt to this width: the left ear
+    /// scales and truncates its text, the right ear is graphical only, and live
+    /// indicators rely on glyphs rather than on more room. See
+    /// `RightEarPolicy` for the right-ear contract.
+    public static let compactEarWidthFixed: CGFloat = 56.0
+
     public var compactEarWidth: CGFloat {
-        let base: CGFloat
-        let settings = SettingsManager.shared
-        
-        if PluginNotificationManager.shared.activeNotification != nil {
-            base = 135.0 // Expands both ears to show app icon + sender and message preview
-        } else {
-            switch settings.closedNotchStyle {
-            case .defaultStyle:
-                let timerVisible = settings.isTabVisible(.timer)
-                let mediaVisible = settings.isTabVisible(.media)
-                
-                if timerVisible && TimerManager.shared.isTimerFinished {
-                    base = 65.0
-                } else if timerVisible && TimerManager.shared.isTimerRunning {
-                    base = TimerManager.shared.remainingSeconds >= 3600 ? 78.0 : 65.0
-                } else if timerVisible && (TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0) {
-                    base = TimerManager.shared.stopwatchElapsed >= 3600 ? 82.0 : 70.0
-                } else if mediaVisible && (MediaManager.shared.currentTrack.isPlaying || (MediaManager.shared.currentTrack.source != .none && MediaManager.shared.currentTrack.title != "No Media Playing")) {
-                    base = 50.0 // Media: icon only left, visualizer/pause right
-                } else if !DropShelfManager.shared.items.isEmpty {
-                    base = 50.0
-                } else {
-                    base = 56.0 // Idle: Apple logo left, battery % right
-                }
-            }
-        }
-        return base + CGFloat(settings.customWidthOffset) / 2.0
+        AppState.compactEarWidthFixed + CGFloat(SettingsManager.shared.customWidthOffset) / 2.0
     }
     
     public var compactIslandWidth: CGFloat {
@@ -213,14 +201,11 @@ public class AppState: ObservableObject {
             let notchW = max(170.0, detector.currentNotch.notchWidth)
             return notchW + (compactEarWidth * 2.0) + (NotchIslandShape.compactFlareWidth * 2.0)
         } else {
-            if PluginNotificationManager.shared.activeNotification != nil {
-                return 440.0 + CGFloat(settings.customWidthOffset)
-            }
-            let isStopwatchActive = TimerManager.shared.isStopwatchRunning || TimerManager.shared.stopwatchElapsed > 0
-            let mediaActive = settings.isTabVisible(.media) && MediaManager.shared.currentTrack.isPlaying
-            let timerActive = settings.isTabVisible(.timer) && (TimerManager.shared.isTimerRunning || isStopwatchActive)
-            let base: CGFloat = (mediaActive || timerActive) ? 260.0 : 180.0
-            return base + CGFloat(settings.customWidthOffset)
+            // Floating pill: also a fixed size. Like the notch it must not resize
+            // with the active activity, so the same constant is used for both
+            // presentation modes and the closed island never changes footprint.
+            return 2.0 * AppState.compactEarWidthFixed + NotchDetector.shared.currentNotch.notchWidth
+                + CGFloat(settings.customWidthOffset)
         }
     }
     

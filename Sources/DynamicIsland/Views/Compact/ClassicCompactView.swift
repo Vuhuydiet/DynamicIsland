@@ -11,13 +11,17 @@ public struct ClassicCompactLeftEarView: View {
     public var body: some View {
         HStack(spacing: 6) {
             if let notif = notifManager.activeNotification {
-                HStack(spacing: 5) {
-                    notif.tab.iconView(size: 13)
+                HStack(spacing: 4) {
+                    notif.tab.iconView(size: 12)
+                    // The closed notch is a fixed-width window, so the sender name
+                    // scales down and truncates to fit rather than being clipped
+                    // mid-glyph by the ear's frame.
                     Text(notif.title)
                         .font(IslandFont.caption)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
             } else if settings.isTabVisible(.timer) && timerManager.isTimerFinished {
