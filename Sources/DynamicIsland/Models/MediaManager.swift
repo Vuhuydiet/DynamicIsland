@@ -236,7 +236,10 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     
     @Published public var currentTrack: MediaTrack = .empty
     @Published public var playbackStatus: MRPlaybackStatus = .stopped
-    @Published public var visualizerHeights: [CGFloat] = [0.2, 0.4, 0.7, 0.9, 0.6, 0.3, 0.5]
+    @Published public var visualizerHeights: [CGFloat] = MediaManager.visualizerIdlePattern
+    /// Rotation offset for the equalizer's wave pattern. See `startVisualizer()` —
+    /// these are not audio levels, and deliberately so.
+    private var visualizerPhase = 0
     @Published public var volume: Double = 0.75
     
     private var lastUserToggleTime: Date = .distantPast
@@ -459,17 +462,42 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         visualizerTimer?.invalidate()
         let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            if self.currentTrack.isPlaying {
-                self.visualizerHeights = (0..<7).map { _ in
-                    CGFloat.random(in: 0.25...1.0)
-                }
-            } else {
-                self.visualizerHeights = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
-            }
+            // NB: these heights are NOT audio levels.
+            //
+            // This used to be `CGFloat.random(in: 0.25...1.0)` while playing, which
+            // fabricated system state: the island showed a live-looking equalizer
+            // that was pure noise, implying it was reading the audio stream when it
+            // was reading nothing. AGENTS.md §2.7 is explicit that production code
+            // reflects reality and that no simulated stand-ins ship for a capability
+            // the app does not have.
+            //
+            // Real output metering is genuinely unavailable here, and deliberately so:
+            // the public level-meter selector is not exported by the SDK
+            // (`kAudioDevicePropertyDeviceLevelMeterScalar` does not exist in any
+            // public header), and the only supported route would be a private symbol
+            // via `dlsym` — the same fragility as the MediaRemote bridge, for a
+            // cosmetic animation. The project has zero third-party dependencies and
+            // adds none for this.
+            //
+            // So the equalizer now animates a fixed, gentle, honest pattern driven
+            // only by whether audio is actually playing. It reads as "audio is
+            // playing", which is true, and claims nothing about levels. If real
+            // metering is ever wanted, this is the single place to change.
+            let isPlaying = self.currentTrack.isPlaying
+            let phase = self.visualizerPhase
+            self.visualizerPhase = (phase + 1) % 6
+            self.visualizerHeights = isPlaying
+                ? (0..<7).map { Self.visualizerPattern[($0 + phase) % Self.visualizerPattern.count] }
+                : Self.visualizerIdlePattern
         }
         RunLoop.main.add(timer, forMode: .common)
         visualizerTimer = timer
     }
+
+    /// Rotating bar heights, in 0...1. A fixed pattern, not a random one, so the
+    /// animation is a repeating wave rather than noise.
+    private static let visualizerPattern: [CGFloat] = [0.35, 0.55, 0.75, 1.0, 0.75, 0.55]
+    private static let visualizerIdlePattern: [CGFloat] = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
     
     // MARK: - Multi-Tier Media Detection (MediaRemote Primary)
     public func refreshMedia() {
@@ -828,35 +856,28 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             return cached
         }
         
-        let mediaKeywords = ["youtube.com", "youtu.be", "netflix.com", "twitch.tv", "vimeo.com", "soundcloud.com", "bilibili.com", "spotify.com"]
-        
         var track: MediaTrack? = nil
-        
-        // 1. Google Chrome
-        if isAppRunning(bundleId: "com.google.Chrome") {
-            track = queryChromiumBrowser(appName: "Google Chrome", bundleId: "com.google.Chrome", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
+
+        // Ordered per `MediaBrowser.detectionOrder`. Each browser is a case in that
+        // list, so adding one here is impossible to forget: `detectionOrder` is the
+        // only enumeration, and `MediaBrowserTests` pins that it is exhaustive.
+        for browser in MediaBrowser.detectionOrder where track == nil {
+            guard isAppRunning(bundleId: browser.bundleIdentifier) else { continue }
+            switch browser.tabScriptStyle {
+            case .chromium:
+                track = queryChromiumBrowser(
+                    browser: browser,
+                    keywords: MediaBrowser.mediaURLKeywords,
+                    isAudioRunning: isAudioRunning
+                )
+            case .safari:
+                track = querySafariBrowser(
+                    keywords: MediaBrowser.mediaURLKeywords,
+                    isAudioRunning: isAudioRunning
+                )
+            }
         }
-        
-        // 2. Safari
-        if track == nil && isAppRunning(bundleId: "com.apple.Safari") {
-            track = querySafariBrowser(keywords: mediaKeywords, isAudioRunning: isAudioRunning)
-        }
-        
-        // 3. Brave Browser
-        if track == nil && isAppRunning(bundleId: "com.brave.Browser") {
-            track = queryChromiumBrowser(appName: "Brave Browser", bundleId: "com.brave.Browser", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
-        }
-        
-        // 4. Arc Browser
-        if track == nil && isAppRunning(bundleId: "company.thebrowser.Browser") {
-            track = queryChromiumBrowser(appName: "Arc", bundleId: "company.thebrowser.Browser", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
-        }
-        
-        // 5. Microsoft Edge
-        if track == nil && isAppRunning(bundleId: "com.microsoft.edgemac") {
-            track = queryChromiumBrowser(appName: "Microsoft Edge", bundleId: "com.microsoft.edgemac", keywords: mediaKeywords, isAudioRunning: isAudioRunning)
-        }
-        
+
         if let found = track {
             cachedWebTrack = found
             lastWebQueryTime = now
@@ -871,10 +892,10 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         }
     }
 
-    private func queryChromiumBrowser(appName: String, bundleId: String, keywords: [String], isAudioRunning: Bool) -> MediaTrack? {
+    private func queryChromiumBrowser(browser: MediaBrowser, keywords: [String], isAudioRunning: Bool) -> MediaTrack? {
         let conditions = keywords.map { "URL contains \"\($0)\"" }.joined(separator: " or ")
         let script = """
-        tell application "\(appName)"
+        tell application "\(browser.applicationName)"
             if (count of windows) > 0 then
                 repeat with w in windows
                     set m to (every tab of w whose \(conditions))
@@ -888,7 +909,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         end tell
         """
         guard let output = runAppleScript(script), !output.isEmpty else { return nil }
-        return parseWebVideoOutput(output, bundleId: bundleId, isAudioRunning: isAudioRunning)
+        return parseWebVideoOutput(output, bundleId: browser.bundleIdentifier, isAudioRunning: isAudioRunning)
     }
 
     private func querySafariBrowser(keywords: [String], isAudioRunning: Bool) -> MediaTrack? {
@@ -1056,40 +1077,13 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         artwork: Data?,
         bundleId: String
     ) -> MediaTrack {
+        let classification = MediaSourceClassification.classify(bundleId: bundleId, artist: artist, title: title)
         var finalArtist = artist
-        var source: MediaSource = .mediaRemote
-        
-        if bundleId == "com.apple.Music" {
-            source = .music
-        } else if bundleId == "com.spotify.client" {
-            source = .spotify
-        } else if bundleId == "com.apple.QuickTimePlayerX" {
-            source = .quicktime
-        } else if bundleId == "org.videolan.vlc" {
-            source = .vlc
-        } else if bundleId.contains("iina") {
-            source = .iina
-        } else {
-            let isBrowser = bundleId.contains("Chrome") || bundleId.contains("Safari") || bundleId.contains("Brave") || bundleId.contains("Arc") || bundleId.contains("Edge")
-            let isYouTube = artist.lowercased().contains("youtube") || title.lowercased().contains("youtube") || bundleId.contains("Chrome") || bundleId.contains("Safari")
-            
-            if isYouTube {
-                source = .youtube
-                if finalArtist.isEmpty {
-                    finalArtist = "YouTube"
-                }
-            } else if isBrowser {
-                source = .browser
-                if finalArtist.isEmpty {
-                    finalArtist = "Web Video"
-                }
-            }
-        }
-        
         if finalArtist.isEmpty {
-            finalArtist = "Now Playing"
+            finalArtist = classification.fallbackArtist
         }
-        
+        let source = classification.source
+
         // Strip trailing " - YouTube" if present in video title
         var cleanTitle = title
         if cleanTitle.hasSuffix(" - YouTube") {
@@ -1316,42 +1310,47 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     private func triggerYouTubeButton(selector: String) {
         let js = "document.querySelector('\(selector)')?.click()"
         let safeJs = js.replacingOccurrences(of: "\"", with: "\\\"")
-        
-        if isAppRunning(bundleId: "com.google.Chrome") {
-            let script = """
-            try
-                tell application "Google Chrome"
-                    repeat with w in windows
-                        repeat with t in tabs of w
-                            if (URL of t contains "youtube.com") or (URL of t contains "youtu.be") then
-                                tell t to execute javascript "\(safeJs)"
-                                return "ok"
-                            end if
+
+        // Only the browsers listed in `youTubeControlBrowsers`, and via the same
+        // `tabScriptStyle` split the detection path uses — so a browser cannot be
+        // detectable for media yet un-injectable for its controls.
+        for browser in MediaBrowser.youTubeControlBrowsers {
+            guard isAppRunning(bundleId: browser.bundleIdentifier) else { continue }
+            let script: String
+            switch browser.tabScriptStyle {
+            case .chromium:
+                script = """
+                try
+                    tell application "\(browser.applicationName)"
+                        repeat with w in windows
+                            repeat with t in tabs of w
+                                if (URL of t contains "youtube.com") or (URL of t contains "youtu.be") then
+                                    tell t to execute javascript "\(safeJs)"
+                                    return "ok"
+                                end if
+                            end repeat
                         end repeat
-                    end repeat
-                end tell
-            on error
-            end try
-            """
-            _ = runAppleScript(script)
-        }
-        
-        if isAppRunning(bundleId: "com.apple.Safari") {
-            let script = """
-            try
-                tell application "Safari"
-                    repeat with w in windows
-                        repeat with t in tabs of w
-                            if (URL of t contains "youtube.com") or (URL of t contains "youtu.be") then
-                                tell t to do JavaScript "\(safeJs)"
-                                return "ok"
-                            end if
+                    end tell
+                on error
+                end try
+                """
+            case .safari:
+                script = """
+                try
+                    tell application "\(browser.applicationName)"
+                        repeat with w in windows
+                            repeat with t in tabs of w
+                                if (URL of t contains "youtube.com") or (URL of t contains "youtu.be") then
+                                    tell t to do JavaScript "\(safeJs)"
+                                    return "ok"
+                                end if
+                            end repeat
                         end repeat
-                    end repeat
-                end tell
-            on error
-            end try
-            """
+                    end tell
+                on error
+                end try
+                """
+            }
             _ = runAppleScript(script)
         }
     }
@@ -1359,22 +1358,16 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
     public func openMediaPage() {
         SoundManager.shared.play(.click)
         
-        // 1. If we have a direct web URL, focus that tab in the running browser or open URL
+        // 1. If we have a direct web URL, focus that tab in the running browser or open URL.
+        // Iterating the registry rather than an inline list is what keeps this in step
+        // with detection: a browser the island can read a track from is a browser it
+        // can also focus the tab of.
         if let urlStr = currentTrack.url, !urlStr.isEmpty {
-            if isAppRunning(bundleId: "com.google.Chrome") && focusBrowserTab(appName: "Google Chrome", urlOrTitle: urlStr) {
-                return
-            }
-            if isAppRunning(bundleId: "com.apple.Safari") && focusBrowserTab(appName: "Safari", urlOrTitle: urlStr) {
-                return
-            }
-            if isAppRunning(bundleId: "com.brave.Browser") && focusBrowserTab(appName: "Brave Browser", urlOrTitle: urlStr) {
-                return
-            }
-            if isAppRunning(bundleId: "company.thebrowser.Browser") && focusBrowserTab(appName: "Arc", urlOrTitle: urlStr) {
-                return
-            }
-            if isAppRunning(bundleId: "com.microsoft.edgemac") && focusBrowserTab(appName: "Microsoft Edge", urlOrTitle: urlStr) {
-                return
+            for browser in MediaBrowser.detectionOrder
+            where isAppRunning(bundleId: browser.bundleIdentifier) {
+                if focusBrowserTab(browser: browser, urlOrTitle: urlStr) {
+                    return
+                }
             }
             if let url = URL(string: urlStr) {
                 NSWorkspace.shared.open(url)
@@ -1384,19 +1377,16 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         
         // 2. If it's a browser without direct URL, try to focus the tab by track title
         if let bundleId = currentTrack.bundleIdentifier {
-            let browserAppNames = [
-                "com.google.Chrome": "Google Chrome",
-                "com.apple.Safari": "Safari",
-                "com.brave.Browser": "Brave Browser",
-                "company.thebrowser.Browser": "Arc",
-                "com.microsoft.edgemac": "Microsoft Edge"
-            ]
-            if let appName = browserAppNames[bundleId], isAppRunning(bundleId: bundleId) {
-                if focusBrowserTab(appName: appName, urlOrTitle: currentTrack.title) {
+            // Resolving through the registry means "is this a browser we support" is
+            // one question answered by one lookup, not a dictionary that can drift out
+            // of date relative to `detectionOrder`.
+            if let browser = MediaBrowser(bundleIdentifier: bundleId),
+               isAppRunning(bundleId: bundleId) {
+                if focusBrowserTab(browser: browser, urlOrTitle: currentTrack.title) {
                     return
                 }
             }
-            
+
             // 3. Activate the specific owning application directly
             if isAppRunning(bundleId: bundleId) {
                 openApp(bundleId: bundleId)
@@ -1408,12 +1398,13 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         openMediaApp()
     }
     
-    private func focusBrowserTab(appName: String, urlOrTitle: String) -> Bool {
+    private func focusBrowserTab(browser: MediaBrowser, urlOrTitle: String) -> Bool {
         let safePattern = urlOrTitle.replacingOccurrences(of: "\"", with: "\\\"")
         let script: String
-        if appName == "Safari" {
+        switch browser.tabScriptStyle {
+        case .safari:
             script = """
-            tell application "Safari"
+            tell application "\(browser.applicationName)"
                 activate
                 repeat with w in windows
                     repeat with t in tabs of w
@@ -1427,9 +1418,9 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
                 return "not_found"
             end tell
             """
-        } else {
+        case .chromium:
             script = """
-            tell application "\(appName)"
+            tell application "\(browser.applicationName)"
                 activate
                 repeat with w in windows
                     set tabIdx to 0
