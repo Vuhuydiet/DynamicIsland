@@ -285,6 +285,10 @@ public class AppState: ObservableObject {
             }
             lastCollapseTime = Date()
             SoundManager.shared.play(.collapse)
+            // Hand the keyboard back to the app the user was actually working in.
+            // Without this the island keeps key status (and this app stays active)
+            // after it has visually closed, so the user's next keystroke is lost.
+            IslandFocusController.shared.resignFocusIfIdle()
         }
     }
     

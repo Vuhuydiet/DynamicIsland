@@ -14,6 +14,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Run as accessory app (no dock icon, sits in menu bar & floating island)
         NSApp.setActivationPolicy(.accessory)
+
+        // Install the main menu FIRST. AppKit routes ⌘C / ⌘V / ⌘Z through
+        // `NSMenu.performKeyEquivalent(_:)` rather than delivering them to views as
+        // key events, and this bundle has no `NSMainNibFile`, so without this the
+        // main menu is nil for the entire process lifetime and those shortcuts are
+        // dead everywhere — including plugin tabs. See `IslandFocusController`.
+        IslandFocusController.shared.installMainMenu()
         
         // Initialize plugins and app integrations
         PluginManager.shared.setup()

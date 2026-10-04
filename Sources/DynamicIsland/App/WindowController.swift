@@ -21,7 +21,12 @@ public class DynamicIslandPanel: NSPanel {
         self.acceptsMouseMovedEvents = true
     }
     
-    // Allow panel to receive key events for text fields in notes/clipboard
+    // Allow panel to receive key events for text fields in notes/clipboard.
+    //
+    // Necessary but NOT sufficient for ⌘C / ⌘V: the panel is ordered with
+    // `orderFrontRegardless()` (which does not make it key) and is a
+    // `.nonactivatingPanel` (which does not take key on click). Something must
+    // actually call `makeKey()`. `IslandFocusController` does that on click.
     public override var canBecomeKey: Bool {
         return true
     }
@@ -32,6 +37,24 @@ public class DynamicIslandPanel: NSPanel {
 }
 
 public class DynamicIslandHostingView: NSHostingView<IslandContainerView> {
+    /// A non-activating panel does not take key status on click, so the click is
+    /// swallowed before any `NSTextView` / `NSTextField` / `WKWebView` can become
+    /// first responder — which is what `⌘C` / `⌘V` from the main menu act on.
+    /// Accepting the first mouse here routes every click that lands on the island
+    /// through the single focus choke point, including clicks that SwiftUI would
+    /// otherwise treat as activation-only.
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+
+    /// Hands key status to the island as soon as the user interacts with it. This is
+    /// the entry point that makes editing shortcuts work in plugin tabs; see
+    /// `IslandFocusController`.
+    public override func mouseDown(with event: NSEvent) {
+        IslandFocusController.shared.islandDidReceiveClick()
+        super.mouseDown(with: event)
+    }
+
     public override func hitTest(_ point: NSPoint) -> NSView? {
         let appState = AppState.shared
         let detector = NotchDetector.shared
