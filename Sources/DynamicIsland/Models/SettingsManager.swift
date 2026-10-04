@@ -59,6 +59,21 @@ public enum OpenedIslandStyle: String, CaseIterable, Identifiable {
 
     public var id: String { rawValue }
 
+    /// Short marketing name shown as a badge in the Settings picker.
+    public var badgeText: String {
+        switch self {
+        case .defaultStyle: return "Full Hub"
+        }
+    }
+
+    /// One-line summary of the shell's layout, shown under its name in Settings.
+    public var styleDescription: String {
+        switch self {
+        case .defaultStyle:
+            return "Full multi-tab workspace with persistent header HUD, fluid sliding tab bar, and tool views."
+        }
+    }
+
     public init?(rawValue: String) {
         switch rawValue {
         case "Default", "Option 1 (Default)", "Option 1":

@@ -189,6 +189,12 @@ rather than deleted, because:
 - `allCases`-driven UI keeps working;
 - a future shell can be added as a new case with **no settings migration**.
 
+The **"Opened Island UI"** section of General Preferences renders
+`OpenedOptionPreviewCard` for every `allCases` entry, so a shell added later appears
+in Settings with no change to that view. Per-shell display strings live on the style
+itself as `badgeText` and `styleDescription`, and the card switches on the style —
+adding a case without artwork therefore fails to compile.
+
 `init(rawValue:)` still parses the removed shells' legacy strings (`"Bottom Deck"`,
 `"Compact HUD"`, `"Floating Cards"`, `"Command Center"`) and coerces them to
 `.defaultStyle`, so an upgrading user with a stale saved preference does not end up
