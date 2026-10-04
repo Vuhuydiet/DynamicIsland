@@ -705,148 +705,23 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
         return !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty
     }
     
-    // MARK: - Apple Music Adapter
-    private func fetchAppleMusicTrack() -> MediaTrack? {
-        let script = """
-        tell application "Music"
-            if player state is playing or player state is paused then
-                set pState to player state as string
-                set tName to name of current track
-                set tArtist to artist of current track
-                set tAlbum to album of current track
-                set tPos to player position
-                set tDur to duration of current track
-                return pState & "|||" & tName & "|||" & tArtist & "|||" & tAlbum & "|||" & tPos & "|||" & tDur
-            else
-                return "stopped"
-            end if
-        end tell
-        """
-        guard let output = runAppleScript(script), !output.isEmpty, output != "stopped" else {
-            return nil
-        }
-        let parts = output.components(separatedBy: "|||")
-        guard parts.count >= 6 else { return nil }
-        
-        let isPlaying = parts[0].lowercased().contains("playing")
-        return MediaTrack(
-            title: parts[1].isEmpty ? "Unknown Title" : parts[1],
-            artist: parts[2].isEmpty ? "Apple Music" : parts[2],
-            album: parts[3],
-            duration: Double(parts[5]) ?? 0,
-            position: Double(parts[4]) ?? 0,
-            isPlaying: isPlaying,
-            source: .music,
-            artworkData: nil,
-            bundleIdentifier: "com.apple.Music"
-        )
+    // MARK: - Desktop Player Adapters
+    //
+    // All four direct-query adapters are the same shape: run this app's script,
+    // parse the delimited response. The differences (app name, unit conversion,
+    // fallback strings, script vocabulary) are data on `DesktopMediaApp`, and the
+    // parsing is a pure function there, so this is the only place the two concerns
+    // meet. See `DesktopMediaApp` for why the duration scaling had to move out of
+    // the script text.
+    private func fetchDesktopAppTrack(_ app: DesktopMediaApp) -> MediaTrack? {
+        guard let output = runAppleScript(app.script), !output.isEmpty else { return nil }
+        return DesktopMediaApp.parse(output: output, app: app)
     }
-    
-    // MARK: - Spotify Adapter
-    private func fetchSpotifyTrack() -> MediaTrack? {
-        let script = """
-        tell application "Spotify"
-            if player state is playing or player state is paused then
-                set pState to player state as string
-                set tName to name of current track
-                set tArtist to artist of current track
-                set tAlbum to album of current track
-                set tPos to player position
-                set tDur to (duration of current track) / 1000
-                return pState & "|||" & tName & "|||" & tArtist & "|||" & tAlbum & "|||" & tPos & "|||" & tDur
-            else
-                return "stopped"
-            end if
-        end tell
-        """
-        guard let output = runAppleScript(script), !output.isEmpty, output != "stopped" else {
-            return nil
-        }
-        let parts = output.components(separatedBy: "|||")
-        guard parts.count >= 6 else { return nil }
-        
-        let isPlaying = parts[0].lowercased().contains("playing")
-        return MediaTrack(
-            title: parts[1].isEmpty ? "Unknown Title" : parts[1],
-            artist: parts[2].isEmpty ? "Spotify" : parts[2],
-            album: parts[3],
-            duration: Double(parts[5]) ?? 0,
-            position: Double(parts[4]) ?? 0,
-            isPlaying: isPlaying,
-            source: .spotify,
-            artworkData: nil,
-            bundleIdentifier: "com.spotify.client"
-        )
-    }
-    
-    // MARK: - QuickTime Player Adapter
-    private func fetchQuickTimeTrack() -> MediaTrack? {
-        let script = """
-        tell application "QuickTime Player"
-            if (count of documents) > 0 then
-                set doc to document 1
-                set pState to playing of doc
-                set docName to name of doc
-                set curTime to current time of doc
-                set docDur to duration of doc
-                return (pState as string) & "|||" & docName & "|||" & curTime & "|||" & docDur
-            else
-                return "stopped"
-            end if
-        end tell
-        """
-        guard let output = runAppleScript(script), !output.isEmpty, output != "stopped" else {
-            return nil
-        }
-        let parts = output.components(separatedBy: "|||")
-        guard parts.count >= 4 else { return nil }
-        
-        let isPlaying = parts[0].lowercased().contains("true")
-        return MediaTrack(
-            title: parts[1].isEmpty ? "Video" : parts[1],
-            artist: "QuickTime Player",
-            album: "Local Video",
-            duration: Double(parts[3]) ?? 0,
-            position: Double(parts[2]) ?? 0,
-            isPlaying: isPlaying,
-            source: .quicktime,
-            artworkData: nil,
-            bundleIdentifier: "com.apple.QuickTimePlayerX"
-        )
-    }
-    
-    // MARK: - VLC Media Player Adapter
-    private func fetchVLCTrack() -> MediaTrack? {
-        let script = """
-        tell application "VLC"
-            if playing then
-                set tName to name of current item
-                set curTime to current time
-                set tDur to duration of current item
-                return "playing|||" & tName & "|||" & curTime & "|||" & tDur
-            else
-                return "stopped"
-            end if
-        end tell
-        """
-        guard let output = runAppleScript(script), !output.isEmpty, output != "stopped" else {
-            return nil
-        }
-        let parts = output.components(separatedBy: "|||")
-        guard parts.count >= 4 else { return nil }
-        
-        return MediaTrack(
-            title: parts[1].isEmpty ? "Media File" : parts[1],
-            artist: "VLC Media Player",
-            album: "Video / Audio",
-            duration: Double(parts[3]) ?? 0,
-            position: Double(parts[2]) ?? 0,
-            isPlaying: true,
-            source: .vlc,
-            artworkData: nil,
-            bundleIdentifier: "org.videolan.vlc"
-        )
-    }
+
+    private func fetchAppleMusicTrack() -> MediaTrack? { fetchDesktopAppTrack(.music) }
+    private func fetchSpotifyTrack() -> MediaTrack? { fetchDesktopAppTrack(.spotify) }
+    private func fetchQuickTimeTrack() -> MediaTrack? { fetchDesktopAppTrack(.quickTime) }
+    private func fetchVLCTrack() -> MediaTrack? { fetchDesktopAppTrack(.vlc) }
     
     // MARK: - Web Browsers (YouTube & Web Video Fallback)
     private func fetchWebVideoTrack(isAudioRunning: Bool) -> MediaTrack? {
