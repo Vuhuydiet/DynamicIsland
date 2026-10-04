@@ -261,6 +261,19 @@ opacity, to eliminate flicker and clipping on tab switch.
 | `.notch` | Always attach to the notch |
 | `.floating` | Always a floating capsule — for external and studio displays |
 
+### One resolution point
+
+Whether the island is in notch mode is decided in exactly one place:
+`DockingMode.isNotchMode(style:hasPhysicalNotch:)`, a pure function reached in
+production only through `NotchDetector.shared.isNotchMode`.
+
+That matters because the same boolean sizes the drawn silhouette *and* the clickable
+region, and the click region is the hand-written open-top rectangle from §2. It was
+previously an inline `switch` at seven call sites — two sizing the hit test, two
+drawing the matching shape — so a copy that drifted would make the island look
+clickable where it was dead, with no build error. A new call site now cannot bypass
+the rule, and `DockingModeTests` pins the policy.
+
 Expansion is driven by `AppState`: hover, click, pin, or a distributed notification.
 `expandTrigger` (`.hover` / `.clickOnly`) and `hoverDelay` shape the feel, and a
 short collapse cooldown prevents flicker when the cursor crosses the island boundary.
@@ -316,6 +329,19 @@ unreachable.
 | `IslandFocusController.shared` | Main menu installation and the island focus choke point |
 | `RightEarPolicy` | *(static type, not a singleton)* right-ear token contract + sanitiser |
 | `TabDragCoordinator` | *(per-view `@StateObject`, not a singleton)* tab drag state machine |
+| `DistributedObservationTokens` | *(static helper)* registers/unregisters block-based notification observers |
+
+### Observer lifetime
+
+The block-based `addObserver(forName:object:queue:using:)` API returns an opaque
+token that must be handed back to `removeObserver`. `DistributedObservationTokens`
+is the single registrar: it registers a name → handler map and returns the tokens as
+a value, which each owner holds and releases in its `deinit`.
+
+The alternative — the selector-based `addObserver(_:selector:name:object:)` with a
+target — unregisters automatically when the target deallocates and needs no token.
+Both forms are in use in this codebase, which is exactly why the distinction is
+worth knowing before adding an observer.
 
 ---
 
@@ -330,6 +356,7 @@ linked explicitly in `scripts/build_app.sh`:
 | `SwiftUI` | All views |
 | `Combine` | `ObservableObject` pipelines |
 | `IOKit` | Battery telemetry, power source state |
+| `CoreAudio` | Default output device + `kAudioDevicePropertyDeviceIsRunningSomewhere` playback detection |
 | `AudioToolbox` | `NSSound` playback |
 | `UserNotifications` | System notification banners |
 | `ServiceManagement` | `SMAppService` launch-at-login |
@@ -358,3 +385,22 @@ resolution — see [`MEDIA.md`](MEDIA.md).
 
 Option names shown to users are clean and descriptive (`"Default"`), never
 numbered (`"Option 1"`).
+
+### File layout
+
+One file per pane under `Views/Expanded/Settings/`, so that editing the sound pane
+does not require loading the geometry pane. `SettingsWindowShell.swift` holds the
+window itself, the `SettingsTab` registry, and the primitives every pane shares
+(`SettingsCard`, `SettingsRow`, `KeyCapView`).
+
+| File | Owns |
+| :--- | :--- |
+| `SettingsWindowShell.swift` | Window, sidebar, `SettingsTab`, shared row/card primitives |
+| `GeneralSettingsTab.swift` | General pane, plus `ThemeCard` and `ClosedOptionPreviewCard` (rendered only there) |
+| `AnimationsSettingsTab.swift` | Animations pane, `AnimationCard`, `AnimationPlaygroundView` |
+| `BehaviorSettingsTab.swift` | Behavior & Tabs pane |
+| `SoundSettingsTab.swift` | Sound pane, `PluginSoundSettingsRow`, `SoundEventRow` |
+| `GeometrySettingsTab.swift` | Geometry & Notch pane |
+| `ShortcutsSettingsTab.swift` | Shortcuts pane, `ShortcutRow` |
+| `AboutSettingsTab.swift` | About pane |
+| `PluginsSettingsTab.swift` | Plugins pane |

@@ -22,8 +22,15 @@ importantly, why most of the app cannot.
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-Current state: **11 tests across 2 suites**, all passing, completing in well under a
+Current state: **28 tests across 6 suites**, all passing, completing in well under a
 second.
+
+> [!NOTE]
+> **A `#if DEBUG` assertion is not a test.** `build_app.sh` invokes `swiftc` with no
+> `-D DEBUG` and no `-swift-version`, so the compiler defaults to Swift 5 mode and
+> every `#if DEBUG` block in the shipping app is compiled out entirely. Guards that
+> matter — the right-ear text ban, the edit-shortcut collision check — therefore live
+> here, where a regression fails a build that anyone can see.
 
 ---
 
@@ -152,3 +159,40 @@ coordinator.onDragChanged(
 | A reorder is a pure permutation | No tab is ever lost or duplicated |
 | Reordering the visible bar leaves hidden tabs in their original slots | Reordering what the user can see must not relocate what they cannot |
 | `visibleOnly: false` returns just the moved list, unfiltered | The non-weaving path |
+
+### `DockingModeTests` — *"Docking mode policy"*
+
+| Test | Guards |
+| :--- | :--- |
+| An explicit preference always wins over the detected hardware | `.notch` on a notchless screen and `.floating` on a notched one both work |
+| Auto follows the hardware in both directions | The default path |
+| Every style resolves, for both hardware states | Totality: a new `NotchStyle` cannot be added without deciding its answer |
+
+### `RightEarTokenTests` — *"Right ear: text-free token contract"*
+
+| Test | Guards |
+| :--- | :--- |
+| Battery is the only text-bearing token | The "graphical only, battery excepted" rule, enforced by `isTextBearing` |
+| A blank icon symbol is rejected | `Image(systemName: "")` renders a mystery box in the notch |
+| A whitespace-only icon symbol is rejected too | Pins the `trimmingCharacters` call, not just an `isEmpty` check |
+| A valid icon symbol passes through unchanged | Sanitising is not lossy for compliant tokens |
+| No token ever degrades to anything other than the battery fallback | A malformed token must fail safe, not leak content |
+
+### `IslandEditActionTests` — *"Edit shortcut contract"*
+
+| Test | Guards |
+| :--- | :--- |
+| The installed edit menu has no duplicate key equivalents | A duplicate makes one menu item silently unreachable (fixed in `3195a56`) |
+| A deliberate collision is detected, not silently accepted | Proves the validator is not vacuously empty |
+| Shift and lowercase variants of the same physical key collide | Pins the `lowercased()` normalisation |
+| Every installed action resolves to a real AppKit selector | Selectors are built with `#selector`, so a renamed AppKit API fails to compile |
+| Delete is menu-only and is not part of the shortcut contract | `delete` claims no key and is appended separately in `buildMainMenu` |
+
+### `SoundManagerMappingTests` — *"Sound scheme → cue mapping"*
+
+| Test | Guards |
+| :--- | :--- |
+| Every scheme resolves every event to its intended system sound | The full palette, written longhand so a change without updating it is a failing diff |
+| No event is unmapped in any scheme | A new `SoundType` case cannot silently play silence |
+| The schemes remain distinct | `subtle` collapsing events onto one cue is deliberate, not a bug to "fix" |
+| Every mapped cue is a real system sound on this Mac | A typo is silent at runtime. Checked against `/System/Library/Sounds` on disk rather than `NSSound(named:)`, which is lenient enough to accept a name with stray whitespace |

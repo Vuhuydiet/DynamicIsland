@@ -59,7 +59,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 The test target is deliberately narrow: **pure logic only**, running headless. What
 that excludes, and the specific traps, are in [`docs/TESTING.md`](docs/TESTING.md).
 
-Current suites: `TabDragCoordinatorTests`, `TabReorderTests`.
+Current suites: `DockingModeTests`, `IslandEditActionTests`, `RightEarTokenTests`,
+`SoundManagerMappingTests`, `TabDragCoordinatorTests`, `TabReorderTests`.
 
 ---
 
@@ -78,13 +79,15 @@ dynamic-island/
 └── Sources/DynamicIsland/
     ├── App/                         # App delegate, panels, sound, focus
     ├── Models/                      # Managers & persisted state (singletons)
-    ├── Utilities/                   # Notch detection, typography
+    ├── Utilities/                   # Typography, notification-token registrar
     ├── Views/
     │   ├── Compact/                 # Closed-notch ears
-    │   ├── Expanded/                # Opened island + tool views + Settings
+    │   ├── Expanded/                # Opened island + tool views
+    │   │   └── Settings/            # One file per Preferences pane
     │   ├── Components/              # Shapes, springs, shared components
     │   └── IslandContainerView.swift
     ├── Plugins/                     # Plugin protocol, registry, web host
+    │   └── Builtin/                 # Messenger plugin + its views
     └── main.swift
 ```
 

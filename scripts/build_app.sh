@@ -30,6 +30,7 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools xcrun swiftc \
     -framework SwiftUI \
     -framework Combine \
     -framework IOKit \
+    -framework CoreAudio \
     -framework AudioToolbox \
     -framework UserNotifications \
     -framework ServiceManagement \
