@@ -440,6 +440,18 @@ public class TabDragCoordinator: ObservableObject {
         slotStep: CGFloat,
         visibleOnly: Bool = true
     ) {
+        // ── Stale-drag recovery ──────────────────────────────────────────
+        // A live drag on a *different* pill means the previous gesture's release
+        // never reached `onDragEnded` (the view was rebuilt, the island resized,
+        // or the mouse-up landed outside the pill). Without this, `draggingTab`
+        // stayed pinned to the dead pill forever and — because both `onDragChanged`
+        // and `onDragEnded` are guarded by `draggingTab == tab` — every other pill
+        // silently failed to select. Drop the abandoned drag and start fresh.
+        if let live = draggingTab, live != tab {
+            popDragCursor()
+            resetState()
+        }
+
         if draggingTab == nil {
             draggingTab = tab
             self.visibleOnly = visibleOnly
@@ -484,25 +496,33 @@ public class TabDragCoordinator: ObservableObject {
         dragOffset = translation
     }
 
-    public func onDragEnded(tab: IslandTab, translation: CGFloat, onSelect: (IslandTab) -> Void) {
-        guard draggingTab == tab else { return }
-
-        if !hasMovedPastTapSlop {
-            onSelect(tab)
-            if didPushCursor {
-                NSCursor.pop()
-                didPushCursor = false
+    public func onDragEnded(tab: IslandTab, translation: CGFloat) {
+        // Same stale-drag recovery as `onDragChanged`: if the release belongs to a
+        // gesture that is no longer live, just clean up. Never early-return silently
+        // while leaving `draggingTab` set.
+        if draggingTab != tab {
+            if draggingTab != nil {
+                popDragCursor()
+                resetState()
             }
+            return
+        }
+
+        // A tap (never crossed the slop) is handled by the pill's `onTapGesture`.
+        // Selection deliberately does NOT live here: `DragGesture` only calls
+        // `onChanged` after `minimumDistance` is exceeded, so on a still click this
+        // method runs with `draggingTab == nil` and the old `guard draggingTab ==
+        // tab` bailed out — the tab was simply never selected. Selection now has its
+        // own recognizer, so it fires on every click regardless of drag state.
+        if !hasMovedPastTapSlop {
+            popDragCursor()
             resetState()
             return
         }
 
         SoundManager.shared.play(.click)
 
-        if didPushCursor {
-            NSCursor.pop()
-            didPushCursor = false
-        }
+        popDragCursor()
 
         // Commit the new order with animations disabled, and in the SAME instant
         // move the offset to the exact value that cancels the layout shift. The
@@ -526,6 +546,17 @@ public class TabDragCoordinator: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             self.resetState()
         }
+    }
+
+    /// Pops the drag cursor exactly once, if one is currently pushed.
+    ///
+    /// Every exit path from a drag must go through this. Calling `NSCursor.pop()`
+    /// without a matching push corrupts AppKit's cursor stack, which leaves the
+    /// grabbing/closed-hand cursor stuck on screen for the rest of the session.
+    private func popDragCursor() {
+        guard didPushCursor else { return }
+        NSCursor.pop()
+        didPushCursor = false
     }
 
     private func resetState() {
@@ -637,9 +668,20 @@ public struct IslandTabDragReorder: ViewModifier {
                     }
                     .onEnded { value in
                         let translation = axis == .horizontal ? value.translation.width : value.translation.height
-                        coordinator.onDragEnded(tab: tab, translation: translation, onSelect: onSelect)
+                        coordinator.onDragEnded(tab: tab, translation: translation)
                     }
             )
+            // ── Selection ───────────────────────────────────────────────────
+            // Selection is owned by its own tap recognizer, NOT by `DragGesture`'s
+            // `onEnded`. `DragGesture` only reports `onChanged`/`onEnded` after
+            // `minimumDistance` (4pt) is exceeded, so on a perfectly still click it
+            // never fires at all and the tab is never selected. The `gesture` above
+            // also has higher precedence, so it wins on a real drag and correctly
+            // suppresses this — giving clean separation: drag reorders, tap selects.
+            .onTapGesture {
+                guard !coordinator.hasMovedPastTapSlop else { return }
+                onSelect(tab)
+            }
     }
 }
 

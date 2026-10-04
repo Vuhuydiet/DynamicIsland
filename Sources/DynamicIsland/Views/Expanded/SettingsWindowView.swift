@@ -1017,7 +1017,7 @@ public struct BehaviorSettingsTab: View {
                                             tabDragCoordinator.onDragEnded(
                                                 tab: tab,
                                                 translation: value.translation.height
-                                            ) { _ in }
+                                            )
                                         }
                                 )
 
