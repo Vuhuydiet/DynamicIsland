@@ -95,6 +95,10 @@ Detects playback across browsers (Chrome, Safari, Brave, Arc, Edge), music apps
 title, and artist, with previous / play-pause / next and a draggable scrubber. A
 multi-bar equalizer visualizer syncs to active audio output.
 
+IINA is detected through the system's NowPlaying report only — it has no
+AppleScript adapter, so its transport controls go through the system-wide path
+rather than a targeted one. See [`MEDIA.md`](MEDIA.md).
+
 Full detail, including the platform quirks: [`MEDIA.md`](MEDIA.md).
 
 ### ⏱️ Timer & Stopwatch

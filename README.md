@@ -62,7 +62,8 @@ that excludes, and the specific traps, are in [`docs/TESTING.md`](docs/TESTING.m
 Current suites: `DesktopMediaAppTests`, `DockingModeTests`, `IslandEditActionTests`,
 `MediaBrowserTests`, `MediaManagerOwnershipTests`, `MediaSourceClassificationTests`,
 `RightEarTokenTests`, `SoundManagerMappingTests`, `TabDragCoordinatorTests`,
-`TabReorderTests`.
+`TabReorderTests`. (`TabDragCoordinatorTests` and `TabReorderTests` are two suites
+in one file — `Tests/DynamicIslandTests/TabDragCoordinatorTests.swift`.)
 
 ---
 

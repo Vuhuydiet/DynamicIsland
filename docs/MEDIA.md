@@ -20,9 +20,14 @@ platform quirks that make it hard.
 
 ## 1. Overview
 
-`MediaManager` is a four-tier detection pipeline with a control stack that degrades
-from most to least invasive. Nothing in it is mocked: production code reflects real
-system sessions only.
+`MediaManager` is a detection pipeline with a control stack that degrades from most
+to least invasive. Nothing in it is mocked: production code reflects real system
+sessions only.
+
+The diagram shows **four detection *sources***. `refreshMedia` labels its own
+comments "Tier 1"–"Tier 6" because it counts Music, Spotify, QuickTime, and VLC as
+separate tiers before grouping them here; the two numberings describe the same
+order, at different granularity.
 
 ```
                     ┌──────────────────────────────────┐
@@ -41,7 +46,13 @@ system sessions only.
 ```
 
 A `MediaTrack` carries `title`, `artist`, `album`, `duration`, `position`,
-`isPlaying`, `source`, `artworkData`, and `url`.
+`isPlaying`, `source`, `artworkData`, `url`, and `bundleIdentifier`.
+
+`isEmpty` is `source == .none`, and it is the *only* definition of emptiness in the
+app. It used to be a comparison against the literal string `"No Media Playing"`,
+which made a user-visible English caption load-bearing control flow in three
+separate files — re-wording the empty state would have silently broken the compact
+ear and the playback-state guard.
 
 Recognised sources: `.spotify`, `.youtube`, `.quicktime`, `.vlc`, `.iina`,
 `.browser`, `.mediaRemote`, `.music`, `.none`.
@@ -70,7 +81,7 @@ Observed after registration:
 | Notification constant | Meaning |
 | :--- | :--- |
 | `kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification` | Play state flipped |
-| `kMRMediaRemoteNowPlayingPlaybackStateDidChangeNotification` | State transition |
+| `kMRMediaRemoteNowPlayingApplicationPlaybackStateDidChangeNotification` | State transition |
 | `kMRMediaRemoteNowPlayingInfoDidChangeNotification` | Track metadata changed |
 | `kMRMediaRemoteNowPlayingApplicationDidChangeNotification` | Different app took over |
 
@@ -197,13 +208,21 @@ Playback state from `MRMediaRemoteGetNowPlayingApplicationPlaybackState` decodes
 
 ### Debounce
 
-- **Flicker guard** — a `false` reading must repeat across several consecutive
-  cycles before the UI is allowed to show paused. A `true` reading applies
-  immediately, because a stuck "playing" state is far more noticeable than a
+Two independent streaks, because they guard different transitions. Both live in
+`MediaManager`; the constants are `playingFalseThreshold`, `emptyTrackThreshold`,
+and `userToggleCooldown`.
+
+- **Flicker guard** — a `false` reading must repeat across **3** consecutive
+  `0.6s` poll cycles before the UI is allowed to show paused. A `true` reading
+  applies immediately, because a stuck "playing" state is far more noticeable than a
   one-cycle delay.
-- **User-intent cooldown** — immediately after the user presses a control, state
-  polling is suppressed for a short window so the manager does not fight the user's
-  own action.
+- **Empty guard** — the same 3-cycle requirement guards the transition to `.empty`,
+  and only while a track is already showing *and* audio is running or the track still
+  claims to be playing. Without that condition a genuinely-stopped track would
+  linger for three cycles before the empty state appeared.
+- **User-intent cooldown** — for **1.2s** after the user presses a control, state
+  polling is suppressed so the manager does not fight the user's own action. The
+  window is also why the UI state is re-asserted optimistically on press.
 
 ---
 
@@ -214,7 +233,8 @@ reports success.
 
 **Play/pause** — the command sent is *explicit*, not a toggle:
 
-1. AppleScript for the targeted app (Music, Spotify, QuickTime).
+1. AppleScript for the targeted app — whichever of Music, Spotify, QuickTime, or VLC
+   `desktopAppOwning` resolves, via that app's `controls`.
 2. `MRMediaRemoteSendCommand(.play)` or `(.pause)` — chosen from the state the UI
    already believes it is in.
 3. Only if that returns `false`, fall back to `.togglePlayPause`.
@@ -222,7 +242,10 @@ reports success.
 
 **Next / previous** — same ladder, ending with a YouTube DOM click
 (`.ytp-next-button` / `.ytp-prev-button`) and then the synthetic media key
-(`NX_KEYTYPE_NEXT` / `NX_KEYTYPE_PREVIOUS`).
+(`NX_KEYTYPE_NEXT` / `NX_KEYTYPE_PREVIOUS`). Both directions are one function,
+`advanceTrack(direction:)`: the two were previously separate methods that were
+identical apart from four values, so a partial edit could make the chain step
+*forward* on some sources and *backward* on others.
 
 **Seek** — `MRMediaRemoteSendCommand(.seekToPlaybackPosition)` with the position
 option, then `MRMediaRemoteSetElapsedTime`, then an app-specific AppleScript
@@ -281,9 +304,12 @@ corrected id cannot leave one path stale.
 
 | Piece | Detail |
 | :--- | :--- |
-| System listener | `kAudioDevicePropertyDeviceIsRunningSomewhere` on the default output device |
-| Device-change listener | Re-binds when the default output device changes |
+| System listener | `kAudioHardwarePropertyDefaultOutputDevice` on the system object — fires when the default output device *changes*, so it can rebind |
+| Per-device listener | `kAudioDevicePropertyDeviceIsRunningSomewhere` on the current device — fires when *that* device starts or stops producing audio |
 | Callback | `onPlaybackStateChanged`, dispatched to the main queue |
+
+Both blocks are retained and removed in `deinit`; the per-device one is torn down and
+re-registered on every device change, so a stale block never outlives its device.
 
 It answers exactly one question — *is audio currently coming out of this Mac?* —
 and is used both to corroborate playback state and to gate the browser-media
