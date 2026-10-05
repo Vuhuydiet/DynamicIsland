@@ -65,9 +65,10 @@ that excludes, and the specific traps, are in [`docs/TESTING.md`](docs/TESTING.m
 Current suites: `CompactEarMarqueeTests`, `DefaultWebAppConfigTests`, `DesktopMediaAppTests`,
 `DockingModeTests`, `FaviconCandidateTests`, `IslandEditActionTests`, `MediaBrowserTests`,
 `MediaManagerOwnershipTests`, `MediaSourceClassificationTests`, `RightEarTokenTests`,
-`SoundManagerMappingTests`, `TabDragCoordinatorTests`, `WebAppTabMigrationTests`,
-`WebAppURLTests`. (`TabDragCoordinatorTests` and `TabReorderTests` are two suites
-in one file — `Tests/DynamicIslandTests/TabDragCoordinatorTests.swift`.)
+`SoundManagerMappingTests`, `TabDragCoordinatorTests`, `WebAppNoticeTests`,
+`WebAppTabMigrationTests`, `WebAppURLTests`. (`TabDragCoordinatorTests` and
+`TabReorderTests` are two suites in one file —
+`Tests/DynamicIslandTests/TabDragCoordinatorTests.swift`.)
 
 ---
 
