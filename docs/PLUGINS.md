@@ -412,11 +412,21 @@ through the same pipeline.
 
 ### Title-flashing detection
 
-Chat apps often update the tab title instead of firing a notification — e.g.
-`(3) Alice: Hey there!`. `IslandWebController` observes `webView.title`, and when the
-unread count increments it parses the sender and message and dispatches an alert.
-Expose the result through `tabBadge` and `compactStatusToken()` to surface it in the
-tab pill and the closed notch.
+**Not available, and deliberately so.** Chat apps often update the document title
+instead of firing a notification — e.g. `(3) Alice: Hey there!` — so a title observer
+(`webView.title`) plus an unread-count parse was how the seeded Messenger app used to
+raise alerts. It was removed.
+
+The title is page-controlled content, so a web app added by URL could choose the text of
+a banner that appeared to come from the island, and fabricate an unread count it had no
+basis for. Surface presence through `compactStatusToken()` instead; it accepts only
+`RightEarToken` values and therefore cannot carry text.
+
+**The cost is real:** Messenger does not call `new Notification()` for chats, so the
+seeded app is silent under the bridge alone. A banner now means the site explicitly
+asked for one. An alert also never quotes the page — `WebAppPlugin.displayNotice(from:appName:)`
+replaces the page's `title` and `body` with the user's own app name and a fixed string,
+because a banner borrowing the island's identity must not carry the page's words.
 
 ### External triggering
 

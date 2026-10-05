@@ -117,19 +117,46 @@ public final class WebAppPlugin: ObservableObject, IslandPlugin {
     ///
     /// The HTML5 bridge stays, because a site asking permission and then firing a
     /// notification is the genuine article. The page-title heuristic is gone: it
-    /// turned ordinary page text into a native macOS banner.
+    /// turned ordinary page text into a native macOS banner, and a URL the user
+    /// typed could therefore display any text it liked in a banner that looked
+    /// like it came from the island (AGENTS.md §2.6/§2.7).
+    ///
+    /// That removal cost the seeded Messenger app its alerts, because Messenger
+    /// does not call `new Notification()` for chats — it signals unread state by
+    /// changing the document title. This is a deliberate, accepted trade: the
+    /// user chose `user_initiated_only`, so a banner is only ever the result of
+    /// the site explicitly asking to show one. The trade is that the seed is
+    /// largely silent in practice, and `displayNotice` is what an alert says
+    /// instead of echoing the page.
     private func handleNotification(title: String, body: String, iconURL: String?) {
         guard isEnabled else { return }
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notice = Self.displayNotice(from: title, appName: name)
         PluginNotificationManager.shared.post(
             pluginId: id,
             tab: .plugin(id: id),
-            title: trimmedTitle.isEmpty ? name : trimmedTitle,
-            body: body.isEmpty ? "New notification" : body,
-            subtitle: name,
+            title: notice.title,
+            body: notice.body,
+            subtitle: nil,
             iconURL: iconURL.flatMap { URL(string: $0) },
             soundEnabled: true
         )
+    }
+
+    /// What an alert is allowed to say.
+    ///
+    /// A page-authored `title` and `body` are attacker-controlled: the site chose
+    /// every character. Displaying them in a banner that appears to come from the
+    /// island lends them the app's identity, so neither string is rendered.
+    ///
+    /// The alert reports *that* the app signalled, and nothing about *what* it
+    /// said. The app name is safe because it is the user's own label, not the
+    /// page's.
+    ///
+    /// Pure, so the policy is asserted in tests rather than trusted (AGENTS.md §3).
+    static func displayNotice(from rawTitle: String, appName: String) -> (title: String, body: String) {
+        let label = appName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = label.isEmpty ? "Web App" : label
+        return (name, "New notification")
     }
 
     // MARK: - Lifecycle
