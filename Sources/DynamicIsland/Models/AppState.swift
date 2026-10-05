@@ -133,7 +133,14 @@ public class AppState: ObservableObject {
     }
     
     /// Resolves the plugin that owns a tab, if any.
-    private func plugin(for tab: IslandTab) -> (any IslandPlugin)? {
+    ///
+    /// Single choke point for "what plugin, if any, owns this tab?": the
+    /// `if case .plugin(let id) = tab, let plugin = PluginManager.shared...`
+    /// pattern was repeated in `expandedWidth` and `currentContentHeight`
+    /// and would reappear at the next site that wanted a tab's plugin, so
+    /// the reach for the global `PluginManager.shared` happens here exactly
+    /// once. `AppState` is the only call site that should ever need it.
+    public func plugin(for tab: IslandTab) -> (any IslandPlugin)? {
         if case .plugin(let id) = tab {
             return PluginManager.shared.plugin(for: id)
         }
@@ -183,8 +190,7 @@ public class AppState: ObservableObject {
     public var expandedWidth: CGFloat {
         // Single opened shell: the base width is constant. Integrated app plugins
         // still widen the island to their declared `preferredIslandWidth`.
-        if case .plugin(let id) = activeTab,
-           let plugin = PluginManager.shared.plugin(for: id) {
+        if let plugin = plugin(for: activeTab) {
             return plugin.preferredIslandWidth ?? 740.0
         }
         return AppState.expandedWidth
@@ -237,8 +243,7 @@ public class AppState: ObservableObject {
 
     /// The content region's height for the active tab.
     public var currentContentHeight: CGFloat {
-        if case .plugin(let id) = activeTab,
-           let plugin = PluginManager.shared.plugin(for: id) {
+        if let plugin = plugin(for: activeTab) {
             return plugin.preferredContentHeight
         }
         return 170.0

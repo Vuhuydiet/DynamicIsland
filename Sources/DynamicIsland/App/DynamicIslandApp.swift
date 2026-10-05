@@ -67,8 +67,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     ) {
         let userInfo = response.notification.request.content.userInfo
         DispatchQueue.main.async {
-            if let pluginId = userInfo["pluginId"] as? String {
-                AppState.shared.expand(tab: .plugin(id: IslandTab.migrateLegacyTabID(pluginId)))
+            // `IslandTab(rawValue:)` applies `migrateLegacyTabID` itself, so the
+            // legacy `"Messenger"` id in a delivered notification resolves here
+            // exactly as it does for a persisted tab order. Migrating before
+            // constructing the case would be a second copy of the same map, and
+            // the one that a future legacy id silently skips.
+            if let pluginId = userInfo["pluginId"] as? String,
+               let tab = IslandTab(rawValue: pluginId) {
+                AppState.shared.expand(tab: tab)
             } else {
                 AppState.shared.expand(tab: .timer)
             }

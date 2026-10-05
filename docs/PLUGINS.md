@@ -313,7 +313,7 @@ PluginIconManager.shared.downloadAndCacheIcon(from: logoURL, for: plugin.id) { i
 
 ```swift
 PluginIconManager.shared.iconView(for: self, size: 18)   // for a plugin
-PluginIconManager.shared.iconView(for: .messenger, size: 18)  // for a tab
+PluginIconManager.shared.iconView(for: .plugin(id: "com.example.app"), size: 18)  // for a tab
 ```
 
 ---
