@@ -91,7 +91,7 @@ public final class WebAppPlugin: ObservableObject, IslandPlugin {
     """
 
     /// A neutral SF Symbol. A web app has no authentic logo unless one was cached,
-    /// and inventing a branded glyph would be fabricating identity (AGENTS.md §2.7).
+    /// and inventing a branded glyph would be fabricating identity (docs/DESIGN.md §7).
     static func systemSymbol(for descriptor: WebAppDescriptor) -> String {
         "globe"
     }
@@ -119,7 +119,7 @@ public final class WebAppPlugin: ObservableObject, IslandPlugin {
     /// notification is the genuine article. The page-title heuristic is gone: it
     /// turned ordinary page text into a native macOS banner, and a URL the user
     /// typed could therefore display any text it liked in a banner that looked
-    /// like it came from the island (AGENTS.md §2.6/§2.7).
+    /// like it came from the island (docs/DESIGN.md §6/§7).
     ///
     /// That removal cost the seeded Messenger app its alerts, because Messenger
     /// does not call `new Notification()` for chats — it signals unread state by

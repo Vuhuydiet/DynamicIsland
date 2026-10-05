@@ -53,7 +53,7 @@ Two consequences that are easy to trip over:
 > default Swift 6 language mode, every `static let shared` singleton in the app is
 > a hard `#MutableGlobalVariable` error and the package would not build at all. The
 > singletons are the deliberate architecture (see
-> [`../AGENTS.md`](../AGENTS.md) §2.1), so the language mode is relaxed instead —
+> [`DESIGN.md`](DESIGN.md) §2), so the language mode is relaxed instead —
 > which also matches what the `swiftc` build path actually uses, so the two paths
 > cannot disagree about what compiles.
 

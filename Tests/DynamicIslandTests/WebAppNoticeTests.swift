@@ -6,7 +6,7 @@ import XCTest
 /// A web app's notification `title` and `body` are chosen by the page, not by the
 /// user, and the banner is presented as though the island sent it. Rendering that
 /// text would let any URL the user added display arbitrary content under the app's
-/// identity (AGENTS.md §2.6/§2.7). The previous implementation forwarded the
+/// identity (docs/DESIGN.md §6/§7). The previous implementation forwarded the
 /// page's title, so the test that matters most is the one asserting it cannot
 /// come back.
 final class WebAppNoticeTests: XCTestCase {

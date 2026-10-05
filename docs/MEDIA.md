@@ -332,7 +332,7 @@ value when nothing is playing.
 It does **not** represent audio levels. It previously used
 `CGFloat.random(in: 0.25...1.0)`, which fabricated system state — the island showed
 a live-looking meter driven by pure noise, implying it was reading the audio stream.
-`AGENTS.md` §2.7 forbids shipping a simulated stand-in for a capability the app does
+`docs/DESIGN.md` §7 forbids shipping a simulated stand-in for a capability the app does
 not have.
 
 Real output metering is genuinely unavailable, and staying that way is the decision:
@@ -350,7 +350,7 @@ change if real metering is ever wanted.
 
 The compact notch shows a compact visualizer via `RightEarToken.mediaVisualizer` —
 the right ear never shows a text label such as a track name or "Paused". See the
-right-ear contract in [`../AGENTS.md`](../AGENTS.md) §2.3.
+right-ear contract in [`DESIGN.md`](DESIGN.md) §3.
 
 ---
 

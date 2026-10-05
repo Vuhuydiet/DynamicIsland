@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The closed-notch left ear: a resident slot plus a scrolling alert strip.
 ///
-/// The ear is a fixed 56pt surface (AGENTS.md §2.2), so this never grows. Resident
+/// The ear is a fixed 56pt surface (docs/DESIGN.md §1), so this never grows. Resident
 /// items hold a stable position on the left and are never carried by the marquee —
 /// a running countdown that drifted off the edge would expire unseen. Transients
 /// enter at the left of the remaining space, travel right, and retire once clear.
@@ -33,7 +33,7 @@ public struct ClassicCompactLeftEarView: View {
     /// Only one item ever occupies the slot, and it never moves: a running countdown
     /// that scrolled away would expire unseen. The ear is 56pt total, so when the
     /// alert strip is present a countdown drops its digits and keeps its glyph —
-    /// content degrades rather than the ear growing (AGENTS.md §2.2).
+    /// content degrades rather than the ear growing (docs/DESIGN.md §1).
     private var resident: AnyView? {
         if transients.isEmpty,
            settings.isTabVisible(.timer), timerManager.isTimerFinished {

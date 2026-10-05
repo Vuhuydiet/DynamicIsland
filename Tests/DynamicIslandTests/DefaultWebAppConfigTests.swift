@@ -68,7 +68,7 @@ final class WebAppDescriptorStrictDecodingTests: XCTestCase {
 ///
 /// `decode` never throws, so a broken config would otherwise be indistinguishable
 /// from an empty one — and a config that silently seeds nothing looks exactly like a
-/// working app with no defaults, which is the kind of quiet failure §2.6 rules out.
+/// working app with no defaults, which is the kind of quiet failure docs/DESIGN.md §6 rules out.
 final class DefaultWebAppConfigTests: XCTestCase {
 
     private func data(_ json: String) -> Data { Data(json.utf8) }

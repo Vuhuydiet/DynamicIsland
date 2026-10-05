@@ -1,7 +1,9 @@
 # AGENTS.md — Contributor & AI Agent Guide
 
-General rules for changing this codebase.
-Feature specifics live in [`docs/`](docs/), indexed in [`docs/README.md`](docs/README.md).
+General rules for changing this codebase — how to enforce a behaviour, how to make a call, how to build, and how to document.
+These apply everywhere; anything specific to one design does not belong here.
+
+The commitments this app is built on live in [`docs/DESIGN.md`](docs/DESIGN.md), and feature specifics in [`docs/`](docs/), indexed in [`docs/README.md`](docs/README.md).
 
 A rule earns its place here by being **learned the hard way**.
 The *why* is what stops it being reverted as redundant; if a rule is obvious from the code, it does not belong in this file.
@@ -18,32 +20,17 @@ Reach for a type before a validator.
 
 ---
 
-## 2. 🧩 Design Principles
+## 2. 🧭 Working Principles
 
-Commitments that are expensive to reverse.
+Rules for making the call, not instructions about this app's design.
+The commitments this app is built on live in [`docs/DESIGN.md`](docs/DESIGN.md) — this file is only what applies everywhere.
 
-**2.1 Global state is load-bearing, not legacy.** Singletons are deliberate and the concurrency language mode is coupled to them; modernising is its own project, not a drive-by.
-
-**2.2 A surface's size is a constant.** When geometry is owned by something you don't control — a cutout, a bezel — let content adapt instead: scale, truncate, or swap to a glyph.
-Resizing the surface reads as a glitch.
-
-**2.3 Encode a surface's limits in its type,** not in a render branch, which the next branch you add bypasses silently.
-A closed enum is both the enforcement mechanism and the test surface.
-
-**2.4 Separate structure from content.** Presentation owns framing, navigation, and transitions; needing different content means a new content type, not a new variant.
-
-**2.5 A discrete action needs a discrete recognizer.** A continuous gesture reports nothing on a still input, so never derive select/submit/confirm from its end callback; and transient state whose release can be lost must be dropped, never left pinned.
-
-**2.6 System signals are lossy.** Corroborate before acting, debounce noisy ones, and degrade to an honest empty state rather than a confident wrong one.
-
-**2.7 Never fabricate system state.** No demo mocks, simulated activity, or stand-ins for a capability the app does not have.
-
-**2.8 Decide for the long term, and decide it yourself.** When two designs are defensible, pick the one that is still right after the next few rewrites — not the cheaper one today, and not the one that defers the choice.
+**2.1 Decide for the long term, and decide it yourself.** When two designs are defensible, pick the one that is still right after the next few rewrites — not the cheaper one today, and not the one that defers the choice.
 Deferring is a decision, and it is the expensive kind: it leaves an unmade decision inside code that now depends on it.
 So make the call, state the choice and its reasoning briefly, and let the user redirect — handing back a menu of options for a call that is yours to make is a tax, not caution.
 Ask only when it is genuinely theirs: their product, their machine, their risk, their money.
 
-**2.9 Fix the mechanism, not the symptom.** When a behaviour is wrong, the defect is a *cause*; the visible annoyance is only where that cause happens to surface.
+**2.2 Fix the mechanism, not the symptom.** When a behaviour is wrong, the defect is a *cause*; the visible annoyance is only where that cause happens to surface.
 So find the thing that makes the symptom unavoidable, and change that — a fix that leaves the cause in place is a workaround, and it will read as a workaround to the next person, who will then either re-patch it or build on it.
 A symptom fix is recognisable in hindsight: it adds a threshold, a tolerance, a delay, a retry, a special case, or a "just while this is happening" guard.
 Those are the signatures of treating the observation instead of the mechanism, because each one buys correctness by *disagreeing less often* rather than by being right.
@@ -106,6 +93,6 @@ Pushing does not cut a release; `v0.1.0` was tagged separately, for the same rea
 
 **6.4 The running app is the review — never gate work on a document sign-off.**
 The user verifies changes by using the app, not by reading prose; design docs, specs, and plans are not a gate they will pass through, and asking them to review one is a wasted round trip.
-So decide the design yourself (§2.8), implement, and go straight to §6.2 — build, install, relaunch, and report what you actually observed.
+So decide the design yourself (§2.1), implement, and go straight to §6.2 — build, install, relaunch, and report what you actually observed.
 This makes §6.2 *the* review step rather than a final flourish: if the launch was skipped, there is nothing to review and the change is not finished.
 `AGENTS.md` is the deliberate exception — it *is* read — so treat an edit to it as a real change to be confirmed, and keep it free of anything that only matters to one feature.

@@ -8,7 +8,7 @@ import Foundation
 // (AGENTS.md §3). Nothing here reads the clock — callers pass `now` — so a test can
 // evaluate any instant deterministically.
 //
-// The strip scrolls because the closed notch is a fixed 56pt surface (AGENTS.md §2.2).
+// The strip scrolls because the closed notch is a fixed 56pt surface (docs/DESIGN.md §1).
 // Content adapts; the ear never grows.
 
 public enum CompactEarMarquee {
@@ -98,7 +98,7 @@ public enum CompactEarMarquee {
     /// The ear is a fixed width, so a numeric readout competes for space it cannot
     /// have. When the row is already carrying a transient strip, a running countdown
     /// falls back to its ring rather than being clipped mid-glyph — content degrading
-    /// is the sanctioned response to a surface that cannot grow (AGENTS.md §2.2).
+    /// is the sanctioned response to a surface that cannot grow (docs/DESIGN.md §1).
     public static func prefersCompactResident(hasTransients: Bool, overflows: Bool) -> Bool {
         hasTransients && overflows
     }

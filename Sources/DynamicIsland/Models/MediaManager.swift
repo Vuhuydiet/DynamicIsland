@@ -467,7 +467,7 @@ public class MediaManager: ObservableObject, @unchecked Sendable {
             // This used to be `CGFloat.random(in: 0.25...1.0)` while playing, which
             // fabricated system state: the island showed a live-looking equalizer
             // that was pure noise, implying it was reading the audio stream when it
-            // was reading nothing. AGENTS.md §2.7 is explicit that production code
+            // was reading nothing. docs/DESIGN.md §7 is explicit that production code
             // reflects reality and that no simulated stand-ins ship for a capability
             // the app does not have.
             //

@@ -54,7 +54,7 @@ Shows a progress ring for a running timer, a pulse when it completes, a lap flag
 a stopwatch, an equalizer while media plays, a pause glyph when media is loaded but
 idle, a folder glyph when files are parked, and a plugin or notification icon for
 alerts. This contract is enforced in code by a closed token type — see
-[`../AGENTS.md`](../AGENTS.md) §2.3.
+[`DESIGN.md`](DESIGN.md) §3.
 
 **Interaction** — clicking the closed island expands it. If a notification is
 showing, tapping it opens straight into that plugin's tab. Tapping while a timer has

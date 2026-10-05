@@ -23,7 +23,7 @@ public enum DefaultWebAppConfig {
     /// file is hand-edited and one bad entry should not cost the user every other
     /// default. A document that is not a JSON array yields an empty list: an absent
     /// or broken config is an honest empty state, not a crash and not a guess
-    /// (AGENTS.md §2.6, §2.7).
+    /// (docs/DESIGN.md §6, §7).
     ///
     /// Entries are re-serialised and decoded one at a time so that a single malformed
     /// entry throws inside its own `init(from:)` and is skipped, rather than taking

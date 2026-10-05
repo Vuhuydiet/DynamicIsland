@@ -10,7 +10,7 @@ import Foundation
 ///
 /// Nothing fetched here is trusted: the response is remote, unauthenticated, and
 /// frequently an HTML error page served under an image filename. A failure is not an
-/// error state the user has to see — it means the tab keeps its globe (AGENTS.md §2.6).
+/// error state the user has to see — it means the tab keeps its globe (docs/DESIGN.md §6).
 public enum FaviconFetcher {
 
     /// Paths tried in order; the first decodable response wins.
@@ -19,7 +19,7 @@ public enum FaviconFetcher {
     /// sites keep at high resolution, while `/favicon.ico` is frequently a 16×16 legacy
     /// file. No third-party favicon service is used: a first-party path exists, so
     /// putting an undocumented external endpoint in the critical path of a cosmetic
-    /// feature is a dependency the app does not need (AGENTS.md §2.7).
+    /// feature is a dependency the app does not need (docs/DESIGN.md §7).
     static let candidatePaths = ["favicon.ico", "apple-touch-icon.png"]
 
     /// Ceiling on a response body. A favicon is a small raster; anything larger is

@@ -7,7 +7,7 @@ import AppKit
 /// express a scrolling row: a marquee has to *measure* each item to place it, and a
 /// view returned from a plugin is already laid out before the ear knows how much room
 /// is left. Handing the ear data instead lets presentation own measurement and
-/// animation, while a plugin only declares *what* it wants shown (AGENTS.md §2.4).
+/// animation, while a plugin only declares *what* it wants shown (docs/DESIGN.md §4).
 public struct CompactEarItem: Identifiable, Equatable {
     public enum Lifetime: Equatable {
         /// Present whenever its condition holds, and never scrolled away — a running

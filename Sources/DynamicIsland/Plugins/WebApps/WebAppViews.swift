@@ -168,7 +168,7 @@ public struct WebAppSettingsCard: View {
 ///
 /// A user-added site has no authentic logo available, so the neutral globe is the
 /// honest fallback — inventing a branded mark would be fabricating identity
-/// (AGENTS.md §2.7).
+/// (docs/DESIGN.md §7).
 public struct WebAppIconView: View {
     let pluginId: String
     let symbol: String
