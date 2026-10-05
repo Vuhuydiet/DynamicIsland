@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// The closed-notch left ear: a resident slot plus a scrolling alert strip.
+///
+/// The ear is a fixed 56pt surface (AGENTS.md §2.2), so this never grows. Resident
+/// items hold a stable position on the left and are never carried by the marquee —
+/// a running countdown that drifted off the edge would expire unseen. Transients
+/// enter at the left of the remaining space, travel right, and retire once clear.
 public struct ClassicCompactLeftEarView: View {
     @ObservedObject var mediaManager = MediaManager.shared
     @ObservedObject var timerManager = TimerManager.shared
@@ -8,23 +14,30 @@ public struct ClassicCompactLeftEarView: View {
     @ObservedObject var settings = SettingsManager.shared
     public var bellWobble: Bool
 
-    public var body: some View {
-        HStack(spacing: 6) {
-            if let notif = notifManager.activeNotification {
-                HStack(spacing: 4) {
-                    notif.tab.iconView(size: 12)
-                    // The closed notch is a fixed-width window, so the sender name
-                    // scales down and truncates to fit rather than being clipped
-                    // mid-glyph by the ear's frame.
-                    Text(notif.title)
-                        .font(IslandFont.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if settings.isTabVisible(.timer) && timerManager.isTimerFinished {
+    /// Drives the marquee. Refreshed on a 30Hz timer so every item's position is
+    /// recomputed from elapsed time rather than accumulated — a dropped frame or a
+    /// backgrounded app cannot make the strip drift or wedge.
+    @State private var now: TimeInterval = Date().timeIntervalSince1970
+
+    /// Alert items currently worth drawing, oldest first.
+    ///
+    /// Taken from the notification list rather than from each plugin's
+    /// `compactItems()`, because the manager is what knows an alert's arrival time —
+    /// and arrival time is what the marquee is a function of.
+    private var transients: [IslandNotification] {
+        notifManager.activeNotifications
+    }
+
+    /// The single item that holds the fixed slot, in priority order.
+    ///
+    /// Only one item ever occupies the slot, and it never moves: a running countdown
+    /// that scrolled away would expire unseen. The ear is 56pt total, so when the
+    /// alert strip is present a countdown drops its digits and keeps its glyph —
+    /// content degrades rather than the ear growing (AGENTS.md §2.2).
+    private var resident: AnyView? {
+        if transients.isEmpty,
+           settings.isTabVisible(.timer), timerManager.isTimerFinished {
+            return AnyView(
                 HStack(spacing: 3) {
                     Image(systemName: "bell.fill")
                         .font(IslandFont.iconMicro)
@@ -35,42 +48,66 @@ public struct ClassicCompactLeftEarView: View {
                         .foregroundColor(.orange)
                         .lineLimit(1)
                 }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if settings.isTabVisible(.timer) && timerManager.isTimerRunning {
+            )
+        }
+
+        if settings.isTabVisible(.timer), timerManager.isTimerRunning {
+            return AnyView(
                 HStack(spacing: 4) {
                     Image(systemName: "timer")
                         .font(IslandFont.iconMicro)
                         .foregroundColor(.orange)
-                    Text(timerManager.formattedRemainingTime)
-                        .font(IslandFont.timeNumeric)
-                        .foregroundColor(.orange)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                    // Dropped to a glyph while the strip is scrolling: a number in a
+                    // moving row is misread at a glance, and the glyph is the
+                    // sanctioned way to say "still counting" in a space this narrow.
+                    if showResidentText {
+                        Text(timerManager.formattedRemainingTime)
+                            .font(IslandFont.timeNumeric)
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if settings.isTabVisible(.timer) && (timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0) {
+            )
+        }
+
+        if settings.isTabVisible(.timer),
+           timerManager.isStopwatchRunning || timerManager.stopwatchElapsed > 0 {
+            let tint = timerManager.isStopwatchRunning ? Color.green : Color.yellow
+            return AnyView(
                 HStack(spacing: 4) {
                     Image(systemName: "stopwatch.fill")
                         .font(IslandFont.iconMicro)
-                        .foregroundColor(timerManager.isStopwatchRunning ? .green : .yellow)
-                    Text(timerManager.formattedCompactStopwatchTime)
-                        .font(IslandFont.timeNumeric)
-                        .foregroundColor(timerManager.isStopwatchRunning ? .green : .yellow)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                        .foregroundColor(tint)
+                    if showResidentText {
+                        Text(timerManager.formattedCompactStopwatchTime)
+                            .font(IslandFont.timeNumeric)
+                            .foregroundColor(tint)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if settings.isTabVisible(.media) && mediaManager.currentTrack.isPlaying {
+            )
+        }
+
+        if settings.isTabVisible(.media), mediaManager.currentTrack.isPlaying {
+            return AnyView(
                 Image(systemName: mediaManager.currentTrack.source.iconName)
                     .font(IslandFont.iconSmall)
                     .foregroundColor(mediaManager.currentTrack.source.accentColor)
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if settings.isTabVisible(.media) && !mediaManager.currentTrack.isEmpty {
+            )
+        }
+
+        if settings.isTabVisible(.media), !mediaManager.currentTrack.isEmpty {
+            return AnyView(
                 Image(systemName: mediaManager.currentTrack.source.iconName)
                     .font(IslandFont.iconSmall)
                     .foregroundColor(mediaManager.currentTrack.source.accentColor.opacity(0.85))
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if !dropShelfManager.items.isEmpty {
+            )
+        }
+
+        if !dropShelfManager.items.isEmpty {
+            return AnyView(
                 HStack(spacing: 4) {
                     Image(systemName: "tray.and.arrow.down.fill")
                         .font(IslandFont.iconMicro)
@@ -79,9 +116,26 @@ public struct ClassicCompactLeftEarView: View {
                         .font(IslandFont.metricNumeric)
                         .foregroundColor(.blue)
                 }
-                .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
-            } else if let pluginAccessory = MessengerPlugin.shared.makeCompactAccessory() {
-                pluginAccessory
+            )
+        }
+
+        return nil
+    }
+
+    /// Whether the resident item may spend points on digits.
+    ///
+    /// False whenever the strip is scrolling. The decision is a pure function of the
+    /// two conditions so it is stated once and tested, rather than re-derived in the
+    /// view body.
+    private var showResidentText: Bool {
+        !CompactEarMarquee.prefersCompactResident(hasTransients: !transients.isEmpty, overflows: !transients.isEmpty)
+    }
+
+    public var body: some View {
+        HStack(spacing: 4) {
+            if let resident {
+                resident
+                    .fixedSize()
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
             } else {
                 Image(systemName: "apple.logo")
@@ -89,6 +143,17 @@ public struct ClassicCompactLeftEarView: View {
                     .foregroundColor(.white.opacity(0.70))
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)), removal: .opacity))
             }
+
+            if !transients.isEmpty {
+                AlertMarqueeView(
+                    notifications: transients,
+                    now: now,
+                    bellWobble: bellWobble
+                )
+            }
+        }
+        .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { date in
+            now = date.timeIntervalSince1970
         }
         .animation(IslandSpring.bouncy, value: timerManager.isTimerFinished)
         .animation(IslandSpring.bouncy, value: timerManager.isTimerRunning)
@@ -96,8 +161,79 @@ public struct ClassicCompactLeftEarView: View {
         .animation(IslandSpring.bouncy, value: timerManager.stopwatchElapsed > 0)
         .animation(IslandSpring.bouncy, value: mediaManager.currentTrack.isPlaying)
         .animation(IslandSpring.bouncy, value: dropShelfManager.items.isEmpty)
-        .animation(IslandSpring.bouncy, value: notifManager.activeNotification?.id)
-        .animation(IslandSpring.bouncy, value: MessengerPlugin.shared.webController.pageTitleUnreadCount)
+        .animation(IslandSpring.bouncy, value: notifManager.activeNotifications.map(\.id))
+    }
+}
+
+/// The scrolling strip of live alerts.
+///
+/// Every position comes from `CompactEarMarquee.positions`, which is a pure function
+/// of the arrival times and the current time. This view owns only measurement and
+/// presentation — the geometry rule and its tests are the same code.
+struct AlertMarqueeView: View {
+    let notifications: [IslandNotification]
+    let now: TimeInterval
+    let bellWobble: Bool
+
+    private var positions: [CGFloat] {
+        CompactEarMarquee.positions(
+            enteredAt: notifications.map(\.timestamp.timeIntervalSince1970),
+            now: now
+        )
+    }
+
+    /// The strip fills whatever the resident item left behind.
+    ///
+    /// The ear is a fixed 56pt and the strip's items are already wider than that, so
+    /// the strip is simply allowed to fill the remaining width and clip at its right
+    /// edge. It never asks the ear to be wider than the hardware allows.
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                ForEach(Array(notifications.enumerated()), id: \.element.id) { index, notification in
+                    if index < positions.count {
+                        item(for: notification)
+                            .fixedSize()
+                            .offset(x: positions[index])
+                    }
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+            .clipped()
+        }
+        .frame(height: 14)
+    }
+
+    private func item(for notification: IslandNotification) -> some View {
+        HStack(spacing: 4) {
+            icon(for: notification)
+                .frame(width: 12, height: 12)
+            // The closed notch is a fixed-width window, so the sender name scales
+            // down and truncates to fit rather than being clipped mid-glyph.
+            Text(notification.title)
+                .font(IslandFont.caption)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+    }
+
+    private func icon(for notification: IslandNotification) -> some View {
+        let pluginId = notification.pluginId
+        if let image = PluginIconManager.shared.icon(for: pluginId) {
+            return AnyView(
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            )
+        }
+        let symbol = PluginManager.shared.plugin(for: pluginId)?.icon ?? "bell.fill"
+        return AnyView(
+            Image(systemName: symbol)
+                .font(IslandFont.iconMicro)
+                .foregroundColor(.white.opacity(0.85))
+        )
     }
 }
 
@@ -117,19 +253,10 @@ public struct ClassicCompactRightEarView: View {
     private var token: RightEarToken {
         let resolved: RightEarToken?
 
-        if notifManager.activeNotification != nil {
+        if let notif = notifManager.activeNotification {
             // Notification alerts show the sender's icon only. The message body is
             // intentionally dropped here: text is not permitted in the right ear.
-            let notif = notifManager.activeNotification
-            let symbol = notif.flatMap { notification in
-                let pluginSymbol: String?
-                switch notification.tab {
-                case .messenger: pluginSymbol = MessengerPlugin.shared.icon
-                case .plugin(let id): pluginSymbol = PluginManager.shared.plugin(for: id)?.icon
-                default: pluginSymbol = nil
-                }
-                return pluginSymbol ?? "bell.fill"
-            } ?? "bell.fill"
+            let symbol = PluginManager.shared.plugin(for: notif.pluginId)?.icon ?? "bell.fill"
             resolved = .notificationIcon(systemName: symbol)
 
         } else if settings.isTabVisible(.timer) && timerManager.isTimerFinished {
@@ -249,7 +376,7 @@ public struct ClassicCompactRightEarView: View {
         .animation(IslandSpring.bouncy, value: timerManager.stopwatchElapsed > 0)
         .animation(IslandSpring.bouncy, value: mediaManager.currentTrack.isPlaying)
         .animation(IslandSpring.bouncy, value: dropShelfManager.items.isEmpty)
-        .animation(IslandSpring.bouncy, value: notifManager.activeNotification?.id)
+        .animation(IslandSpring.bouncy, value: notifManager.activeNotifications.map(\.id))
         .animation(IslandSpring.bouncy, value: timerManager.laps.count)
     }
 }

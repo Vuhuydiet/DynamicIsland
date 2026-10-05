@@ -48,6 +48,16 @@ if [ -d "$DIR/Resources/PluginIcons" ]; then
     cp -R "$DIR/Resources/PluginIcons/"* "$RESOURCES_DIR/PluginIcons/"
 fi
 
+# The default web app list is data, not code: it is the seeding source for a new
+# install, so leaving it out of the bundle would silently seed nothing.
+if [ -f "$DIR/Resources/DefaultWebApps.json" ]; then
+    echo "📋 Copying DefaultWebApps.json into bundle..."
+    cp "$DIR/Resources/DefaultWebApps.json" "$RESOURCES_DIR/DefaultWebApps.json"
+else
+    echo "❌ Resources/DefaultWebApps.json is missing — a new install would seed no default web apps." >&2
+    exit 1
+fi
+
 echo "📝 Creating Info.plist..."
 cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>

@@ -39,11 +39,11 @@ flowchart TD
     end
 
     subgraph Plugins["🧩 Registered Plugins"]
-        Messenger["MessengerPlugin<br/>full-width app tab"]
+        WebApp["WebAppPlugin<br/>any web app, from a descriptor"]
         Custom["Your plugin"]
     end
 
-    Messenger -->|"implements"| PluginMgr
+    WebApp -->|"implements"| PluginMgr
     Custom -->|"implements"| PluginMgr
     PluginMgr -->|"registers tabs"| AppState
     AppState -->|"renders active"| TabHost
@@ -98,7 +98,7 @@ public protocol IslandPlugin: AnyObject, Identifiable {
 
     @ViewBuilder func makeContentView() -> AnyView
 
-    func makeCompactAccessory() -> AnyView?      // default nil — LEFT ear, may carry text
+    func compactItems() -> [CompactEarItem]        // default [] — LEFT ear, may carry text
     func compactStatusToken() -> RightEarToken?  // default nil — RIGHT ear, graphical only
     func makeSettingsView() -> AnyView?          // default nil
     func makeIconView(size: CGFloat) -> AnyView? // default nil
@@ -135,7 +135,14 @@ requires **no UI code at all**.
 **`compactStatusToken()`** — returns a `RightEarToken`, never a view. Because the
 right ear accepts only a closed token enum where no case except `.battery` can carry
 a string, a plugin **structurally cannot** put text there. If your plugin needs
-readable text in the notch, use `makeCompactAccessory()` for the left ear.
+readable text in the notch, return a `CompactEarItem` from `compactItems()` instead.
+
+**`compactItems()`** — returns *data*, not a view. The left ear measures and scrolls
+its contents, so a pre-built `AnyView` cannot be placed by a marquee. Each item
+declares whether it is `.resident` (holds a fixed slot, never scrolled away) or
+`.transient` (enters at the left, travels right, retires once clear). Geometry lives
+in `CompactEarMarquee`, a pure function of elapsed time — the same code the tests
+exercise.
 
 > [!TIP]
 > These are level-2 enforcement in practice: omitting either one fails
@@ -146,6 +153,11 @@ readable text in the notch, use `makeCompactAccessory()` for the left ear.
 ## 4. Web App Injection
 
 `IslandWebPlugin.swift` provides a reusable `WKWebView` host.
+
+> [!TIP]
+> To add a site for **yourself**, you do not need this file — see
+> [§10 Tutorial](#10-tutorial-adding-a-web-app). The controller below is the
+> substrate `WebAppPlugin` is built on.
 
 ### `IslandWebConfiguration`
 
@@ -170,10 +182,16 @@ public struct IslandWebConfiguration {
 | `webView` | The managed `WKWebView` |
 | `title`, `isLoading`, `currentURL`, `estimatedProgress` | Observed page state |
 | `canGoBack` / `canGoForward` | Navigation availability |
-| `pageTitleUnreadCount: Int` | Unread count parsed from the page title |
 | `onNotificationReceived` | `(title, body, icon) -> Void` — HTML5 notifications |
-| `onTitleNotificationTriggered` | `(count, rawTitle) -> Void` — unread increments |
-| `zoomIn()` / `zoomOut()` / `setZoom(_:)` / `resetZoom()` | Interactive zoom |
+| `zoomIn()` / `zoomOut()` / `setZoom(_:)` / `resetZoom()` | Interactive zoom (persisted per host) |
+
+> [!NOTE]
+> `pageTitleUnreadCount` and `onTitleNotificationTriggered` were **removed**. They
+> parsed an unread count out of the page title (`(3) Alice: hi`) and raised a native
+> macOS banner from it. The title is page-controlled content, so for a web app the
+> user typed by URL that was a fabricated unread count and a page able to raise
+> system notifications it had no business raising. Alerts now fire only on a real
+> `new Notification()` from the page.
 
 ### What it handles for you
 
@@ -440,122 +458,85 @@ panel is sized to accommodate the largest of these — see
 
 ## 10. Tutorial: Adding a Web App
 
-Adding WhatsApp Web takes about five minutes.
+**You do not need to write a plugin to add a web app.** Web apps are data: a
+`WebAppDescriptor` (id, name, url) persisted in `UserDefaults` and turned into a
+`WebAppPlugin` by `WebAppRegistry`. `Preferences → Plugins → Add Web App` does this
+for you, and everything below — tab, web session, zoom persistence, ear accessory,
+sound settings, add/remove — already works for the result.
 
-### Step 1 — Create the plugin
+Adding a site takes about ten seconds:
 
-`Sources/DynamicIsland/Plugins/Builtin/WhatsAppPlugin.swift`:
+1. Open **Preferences → Plugins**.
+2. Paste the address into **Web address**. A missing `https://` is added for you.
+3. Press **Add**.
 
-```swift
-import SwiftUI
-import AppKit
+The URL is validated by `WebAppDescriptor.parse(_:)`, which returns one of
+`empty` / `notHTTP` / `noHost` so a bad address is rejected with a specific reason
+instead of producing a tab that loads nothing.
 
-public class WhatsAppPlugin: ObservableObject, IslandPlugin {
-    public static let shared = WhatsAppPlugin()
-    public static let pluginID = "com.dynamicisland.plugin.whatsapp"
+### Step 1 — Understand what you got
 
-    public let id: String = WhatsAppPlugin.pluginID
-    public let name: String = "WhatsApp"
-    public let icon: String = "message.fill"
-    public let subtitle: String = "WhatsApp Web chat inside the notch"
+Each descriptor produces one `WebAppPlugin`:
 
-    @Published public var isEnabled: Bool = true
+| Concern | Owner |
+| :--- | :--- |
+| Identity | `WebAppDescriptor.identifier(for:)` — derived from the **host alone**, so editing a path never orphans the tab, icon, or saved sound |
+| Label | Your `name`, or `displayName(for:)` which strips `www.`/`web.` and the public suffix (`web.whatsapp.com` → "Whatsapp") |
+| Preset | `DefaultWebAppConfig.loadFromBundle()` — adding one is a no-op if already installed, so the button is idempotent |
+| Persistence | `WebAppStore`, seeded once behind a flag so deleting a seeded app does not resurrect it |
+| Icon | `FaviconFetcher`, which derives the site's favicon URL from `url` and caches it on first registration |
 
-    public var preferredContentHeight: CGFloat { 400.0 }
-    public var preferredIslandWidth: CGFloat? { 740.0 }
+### Step 2 — Ship an icon (optional)
 
-    public var tabBadge: String? {
-        webController.pageTitleUnreadCount > 0
-            ? "\(webController.pageTitleUnreadCount)" : nil
-    }
+**Usually unnecessary.** A web app's tab icon is fetched from the site itself —
+`/favicon.ico`, then `/apple-touch-icon.png` — and cached to disk on first
+registration, so a shipped PNG is only worth adding for an app whose real favicon is
+wrong or missing. If you do ship one, place `<lastHostComponent>.png` at
+`Resources/PluginIcons/`: the candidate key is the last component of the id, so
+`com.dynamicisland.webapp.web.slack.com` matches `slack.png`. A bundled icon also
+*suppresses* the fetch, so shipping one pins the icon rather than decorating it.
 
-    /// Readable text belongs on the LEFT ear, so the unread count goes here.
-    public func makeCompactAccessory() -> AnyView? {
-        guard webController.pageTitleUnreadCount > 0 else { return nil }
-        return AnyView(
-            HStack(spacing: 3) {
-                Image(systemName: icon).font(IslandFont.iconMicro)
-                Text("\(webController.pageTitleUnreadCount)").font(IslandFont.metricNumeric)
-            }
-        )
-    }
+With no icon available from either source, the tab shows a neutral globe glyph rather
+than an invented brand mark.
 
-    /// The right ear takes only tokens — structurally incapable of carrying text.
-    public func compactStatusToken() -> RightEarToken? {
-        guard webController.pageTitleUnreadCount > 0 else { return nil }
-        return .pluginIcon(systemName: icon)
-    }
+### Step 3 — Seed a new built-in app
 
-    public private(set) var webController: IslandWebController!
+Append an entry to `Resources/DefaultWebApps.json`:
 
-    private init() {
-        let config = IslandWebConfiguration(
-            initialURL: URL(string: "https://web.whatsapp.com/")!,
-            zoomFactor: 0.88,
-            customCSS: "::-webkit-scrollbar { width: 4px; }"
-        )
-        self.webController = IslandWebController(configuration: config)
-
-        webController.onNotificationReceived = { [weak self] title, body, _ in
-            guard let self, self.isEnabled else { return }
-            PluginNotificationManager.shared.post(
-                pluginId: self.id,
-                title: title,
-                body: body,
-                subtitle: "WhatsApp"
-            )
-        }
-    }
-
-    public func makeContentView() -> AnyView {
-        AnyView(
-            VStack(spacing: 6) {
-                IslandHeaderView(
-                    iconView: PluginIconManager.shared.iconView(for: self, size: 18),
-                    title: "WhatsApp",
-                    subtitle: "Connected"
-                ) {
-                    HStack(spacing: 5) {
-                        IslandButton(nil, icon: "plus", variant: .ghost, size: .small) {
-                            self.webController.zoomIn()
-                        }
-                        IslandButton(nil, icon: "minus", variant: .ghost, size: .small) {
-                            self.webController.zoomOut()
-                        }
-                    }
-                }
-                IslandCardView(cornerRadius: 10) {
-                    IslandWebViewHost(controller: webController)
-                }
-                .frame(maxHeight: .infinity)
-                .padding(.horizontal, 6)
-            }
-            .padding(.bottom, 6)
-        )
-    }
+```json
+{
+  "id": "com.dynamicisland.webapp.web.slack.com",
+  "name": "Slack",
+  "url": "https://app.slack.com/client",
+  "isEnabled": true
 }
 ```
 
-### Step 2 — Register it
+The file uses the same shape as the persisted descriptor, so the decoder that reads it
+is the decoder that reads `UserDefaults`. Two things it is not:
 
-In `Sources/DynamicIsland/Plugins/PluginManager.swift`:
+- **It is read on first launch only.** A launch that finds the seed flag already set
+  does not re-read it, because that flag is what makes deletion stick. Shipping a new
+  default later therefore reaches *new installs only*; an existing user never
+  receives it automatically, and can add it from `Preferences → Plugins → Presets`.
+- **Unknown keys are rejected, not ignored.** A misspelled field drops that one entry
+  instead of half-applying it, so a typo fails a test rather than silently shipping an
+  app with a missing field.
 
-```swift
-register(plugin: WhatsAppPlugin.shared)
-```
+The id is written down twice — here, and as `WebAppLegacyID.messenger` for the
+original plugin — and a test asserts the two agree, because a new install seeded
+under an unexpected id would miss its bundled icon and any restored sound override.
 
-### Step 3 — Add an icon
-
-Place `whatsapp.png` (512×512) at `Resources/PluginIcons/whatsapp.png`. The candidate
-key `whatsapp` matches the last component of the plugin id, so no other wiring is
-needed.
+That is the whole integration. **If you need behaviour that cannot be derived from
+the descriptor — a custom header, a site-specific side panel — it does not belong in
+a `WebAppPlugin` subclass.** Write a real `IslandPlugin` instead and register it;
+per-app web views are one use of the protocol, not its only one.
 
 ### Step 4 — Build and launch
 
 ```bash
-DEVELOPER_DIR=/Library/Developer/CommandLineTools ./scripts/build_app.sh && \
-pkill -f DynamicIsland || true && \
-open /Applications/DynamicIsland.app
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build_app.sh && \
+pkill -f DynamicIsland; sleep 0.4; open /Applications/DynamicIsland.app
 ```
 
 ---
@@ -571,9 +552,11 @@ shows the alert pill immediately.
 
 - [ ] Compiles without overriding `defaultSoundProfile` or `compactStatusToken()`.
 - [ ] The tab pill appears and reorders with the user's custom order.
+- [ ] The pill shows `displayName`, not a reverse-DNS id.
 - [ ] `makeContentView()` fills the declared viewport and the island resizes smoothly.
-- [ ] `tabBadge` shows an unread count when there is one.
-- [ ] `compactStatusToken()` shows an icon in the right ear — and no text appears.
+- [ ] `compactItems()` shows in the left ear; `compactStatusToken()` shows an icon in
+      the right ear — and no text appears there.
 - [ ] Sound settings appear under **Preferences → Sound Effects** with no extra code.
 - [ ] A test notification shows the alert pill and plays the plugin's alert cue.
+- [ ] Two simultaneous alerts are both visible (the list is bounded, not a single slot).
 - [ ] The web session survives a relaunch (if web-based).

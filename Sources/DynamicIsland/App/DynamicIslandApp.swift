@@ -68,11 +68,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         let userInfo = response.notification.request.content.userInfo
         DispatchQueue.main.async {
             if let pluginId = userInfo["pluginId"] as? String {
-                if pluginId == MessengerPlugin.pluginID {
-                    AppState.shared.expand(tab: .messenger)
-                } else {
-                    AppState.shared.expand(tab: .plugin(id: pluginId))
-                }
+                AppState.shared.expand(tab: .plugin(id: IslandTab.migrateLegacyTabID(pluginId)))
             } else {
                 AppState.shared.expand(tab: .timer)
             }

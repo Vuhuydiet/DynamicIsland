@@ -43,13 +43,28 @@ public struct IslandNotification: Identifiable, Equatable {
 public class PluginNotificationManager: ObservableObject {
     public static let shared = PluginNotificationManager()
     
-    /// Currently visible notification banner on the compact notch
-    @Published public var activeNotification: IslandNotification?
-    
+    /// Notifications currently visible in the closed notch, oldest first.
+    ///
+    /// A list rather than a single optional: the previous `@Published var
+    /// activeNotification: IslandNotification?` silently discarded the first alert
+    /// when a second arrived, so two simultaneous messages showed one and the user
+    /// never learned the other existed. Each entry retires on its own timer, so one
+    /// expiring does not clear the rest.
+    @Published public var activeNotifications: [IslandNotification] = []
+
+    /// The most recent visible notification, for surfaces that show one at a time.
+    public var activeNotification: IslandNotification? {
+        activeNotifications.last
+    }
+
+    /// Upper bound on simultaneously visible alerts. Older entries are dropped, not
+    /// queued, so a burst cannot grow the ear's content without limit.
+    public static let maxActiveNotifications = 3
+
     /// Recent notification history
     @Published public var notificationHistory: [IslandNotification] = []
-    
-    private var dismissTimer: Timer?
+
+    private var dismissTimers: [UUID: Timer] = [:]
     private let displayDuration: TimeInterval = 4.5
     private var lastDispatchedTime: [String: Date] = [:]
 
@@ -62,7 +77,7 @@ public class PluginNotificationManager: ObservableObject {
             "com.dynamicisland.pluginNotification": { [weak self] notification in
                 let title = notification.userInfo?["title"] as? String ?? "Notification"
                 let body = notification.userInfo?["body"] as? String ?? ""
-                let pluginId = notification.userInfo?["pluginId"] as? String ?? MessengerPlugin.pluginID
+                let pluginId = notification.userInfo?["pluginId"] as? String ?? WebAppLegacyID.messenger
                 self?.post(pluginId: pluginId, title: title, body: body)
             },
         ])
@@ -70,7 +85,7 @@ public class PluginNotificationManager: ObservableObject {
 
     deinit {
         DistributedObservationTokens.remove(observationTokens)
-        dismissTimer?.invalidate()
+        dismissTimers.values.forEach { $0.invalidate() }
     }
     
     /// Posts a notification to Dynamic Island from any plugin or tool.
@@ -90,7 +105,7 @@ public class PluginNotificationManager: ObservableObject {
         }
         lastDispatchedTime[dedupeKey] = Date()
         
-        let resolvedTab = tab ?? (pluginId == MessengerPlugin.pluginID ? .messenger : .plugin(id: pluginId))
+        let resolvedTab = tab ?? .plugin(id: pluginId)
         let notif = IslandNotification(
             pluginId: pluginId,
             tab: resolvedTab,
@@ -114,39 +129,52 @@ public class PluginNotificationManager: ObservableObject {
         if notif.soundEnabled {
             SoundManager.shared.playPluginCue(.alert, pluginId: notif.pluginId)
         }
-        
-        // 2. Set active notification for in-notch live balloon animation
+
+        // 2. Add to the in-notch live alerts. Oldest first, and capped: over the cap
+        // the *oldest* entry goes, so the newest alert is always the one kept.
         withAnimation(IslandSpring.expand) {
-            self.activeNotification = notif
+            self.activeNotifications.append(notif)
+            if self.activeNotifications.count > Self.maxActiveNotifications {
+                let overflow = self.activeNotifications.removeFirst()
+                dismissTimers[overflow.id]?.invalidate()
+                dismissTimers[overflow.id] = nil
+            }
         }
-        
+
         // Store in history (max 30)
         self.notificationHistory.insert(notif, at: 0)
         if self.notificationHistory.count > 30 {
             self.notificationHistory.removeLast()
         }
-        
-        // 3. Schedule auto-dismiss for compact notch HUD banner
-        dismissTimer?.invalidate()
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: displayDuration, repeats: false) { [weak self] _ in
+
+        // 3. Per-item auto-dismiss. Each alert owns its timer, so one expiring
+        // leaves the others alone instead of clearing the whole banner.
+        let timer = Timer.scheduledTimer(withTimeInterval: displayDuration, repeats: false) { [weak self] _ in
             DispatchQueue.main.async {
-                withAnimation(IslandSpring.collapse) {
-                    if self?.activeNotification?.id == notif.id {
-                        self?.activeNotification = nil
-                    }
-                }
+                self?.retire(notif.id)
             }
         }
-        
+        dismissTimers[notif.id] = timer
+
         // 4. Also post to native macOS notification center
         postToSystemNotificationCenter(notif)
     }
-    
-    /// Dismisses any active notification banner currently shown in the notch.
-    public func dismissActive() {
-        dismissTimer?.invalidate()
+
+    /// Removes one alert, leaving any others visible.
+    private func retire(_ id: UUID) {
+        dismissTimers[id]?.invalidate()
+        dismissTimers[id] = nil
         withAnimation(IslandSpring.collapse) {
-            self.activeNotification = nil
+            self.activeNotifications.removeAll { $0.id == id }
+        }
+    }
+
+    /// Dismisses every visible alert in the notch.
+    public func dismissActive() {
+        dismissTimers.values.forEach { $0.invalidate() }
+        dismissTimers.removeAll()
+        withAnimation(IslandSpring.collapse) {
+            self.activeNotifications.removeAll()
         }
     }
     

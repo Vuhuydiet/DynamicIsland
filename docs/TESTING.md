@@ -22,8 +22,8 @@ importantly, why most of the app cannot.
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-Current state: **71 tests across 10 suites**, all passing, completing in well under a
-second.
+Current state: **151 tests** — 80 XCTest plus 71 swift-testing, all passing, completing in
+well under a second.
 
 > [!NOTE]
 > **A `#if DEBUG` assertion is not a test.** `build_app.sh` invokes `swiftc` with no
@@ -78,7 +78,7 @@ signal code 5`) — or, worse, silently exercise nothing:
 
 | Trap | Why |
 | :--- | :--- |
-| `IslandTab.allCases` | Not a pure enumeration. Resolves `SettingsManager.orderedTabs(from: defaultTabs)` → `MessengerPlugin.shared.isEnabled` → a `WKWebView`. Needs a window server. |
+| `IslandTab.allCases` | Not a pure enumeration. Resolves `SettingsManager.orderedTabs(from: defaultTabs)` → `PluginManager.shared.activePlugins` → one `WKWebView` per web app. Needs a window server. |
 | `PluginManager.shared` / `PluginIconManager.shared` | Same chain: `defaultTabs` walks `activePlugins`. |
 | `AppState.shared` | Reaches `SettingsManager` and the plugin registry. |
 | `SoundManager.shared.play(_:)` | Reaches `SettingsManager` and dispatches `NSSound`. |
@@ -159,6 +159,52 @@ coordinator.onDragChanged(
 | A reorder is a pure permutation | No tab is ever lost or duplicated |
 | Reordering the visible bar leaves hidden tabs in their original slots | Reordering what the user can see must not relocate what they cannot |
 | `visibleOnly: false` returns just the moved list, unfiltered | The non-weaving path |
+
+### `WebAppURLTests` — *"Web app URL validation"*
+
+| Test | Guards |
+| :--- | :--- |
+| A bare host is upgraded to `https://` | `messenger.com` is what a user actually types |
+| An explicit scheme is preserved, and whitespace trimmed | Typing is not rewritten under the user |
+| Empty input is `.empty`, not a generic failure | Each rejection has its own user-facing reason |
+| A non-http scheme is `.notHTTP` | A web view cannot load `ftp://` |
+| A scheme is never double-prefixed | A blind `https://` prefix would make `https://ftp://x`, which parses as host `ftp` and loads the wrong thing |
+| Hostless input is `.noHost` | Produces a specific message, not a blank tab |
+| Every rejection carries a reason; success carries none | The UI cannot render an empty error |
+| Identity is derived from the **host alone** | Editing a path must not orphan the saved tab, icon, or sound |
+| Identity is stable and unique per host, namespaced `webapp.` | Two apps must never collide on one id |
+| The seeded app keeps its **legacy** id | The shipped `messenger.png` and persisted sound overrides are keyed by it |
+| Display names strip `www.`/`web.` and the public suffix | `web.whatsapp.com` reads as "Whatsapp", not "Web Whatsapp Com" |
+| A display name is never empty | A blank tab label is a silent failure |
+
+### `CompactEarMarqueeTests` — *"Left ear marquee geometry"*
+
+| Test | Guards |
+| :--- | :--- |
+| Travel is zero before entry, and for a negative elapsed | A clock change must not project an item off-screen |
+| Travel is linear in elapsed time | The drift guard: an accumulating `offset += dt` would depend on frame count |
+| A dropped frame does not shift the strip | A 2.5s stall arrives as one delta; the position must be identical either way |
+| The first item enters from the left edge | The strip starts off-screen, not inside the ear |
+| Positions are non-decreasing | The view lays items out left to right and relies on this |
+| Simultaneous items are exactly one slot apart | A burst stays legible instead of stacking |
+| A later item trails by travel distance, or one slot if closer | Overlap rule, and the natural spacing it overrides |
+| A future entry time is treated as just arrived | A bad timestamp degrades safely |
+| An item retires only once fully clear of the ear | Not early (popped mid-read), not late (stranded) |
+| An item is not visible before it exists | Retired items must not flash back in |
+| A countdown drops its digits only when the strip overflows | Content degrades; the 56pt ear never grows |
+
+### `WebAppTabMigrationTests` — *"Legacy tab id migration"*
+
+| Test | Guards |
+| :--- | :--- |
+| `"Messenger"` maps to the seeded descriptor id | Both `customTabOrder` and `hiddenTabs` store the raw string |
+| Built-in tool ids and unknown plugin ids pass through | The mapping is narrow, not a rewrite |
+| The mapping is idempotent | It runs on **every read**, not once at launch |
+| A legacy entry keeps its position in the stored order | An upgrading user must not lose their tab order |
+| No entry is dropped by the migration | Silent data loss is the failure being guarded |
+| A hidden Messenger stays hidden | A tab the user hid must not reappear |
+| Migration cannot resurrect another hidden tab | The rewrite is a mapping, not a reset |
+| `init?(rawValue:)` builds `.plugin(id:)` from a legacy value | Persisted and deep-linked ids take this path |
 
 ### `DockingModeTests` — *"Docking mode policy"*
 

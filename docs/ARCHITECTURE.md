@@ -329,7 +329,7 @@ unreachable.
 | `PluginManager.shared` | Plugin registry, lifecycle coordination |
 | `PluginIconManager.shared` | Logo resolution, disk/memory caching, remote download |
 | `PluginNotificationManager.shared` | Plugin notifications, in-notch alert, auto-dismiss, system banners |
-| `MessengerPlugin.shared` | Facebook Messenger integration, web session, unread badge |
+| `WebAppRegistry.shared` | Reconciles stored descriptors to live `WebAppPlugin`s |
 | `SoundManager.shared` | Tactile feedback and **all** plugin audio via `playPluginCue(_:pluginId:)` |
 | `NotchDetector.shared` | Hardware notch measurement |
 | `IslandFocusController.shared` | Main menu installation and the island focus choke point |

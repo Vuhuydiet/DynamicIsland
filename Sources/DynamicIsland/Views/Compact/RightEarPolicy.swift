@@ -11,7 +11,7 @@ import SwiftUI
 /// independent sources: the live-activity `if/else` chain rendered `"Timer"`,
 /// `"Paused"`, `"Stopwatch"`, `"Done!"` and `"L3"`, notification banners rendered
 /// message bodies, and plugins could inject arbitrary strings through
-/// `makeCompactAccessory()`.
+/// `makeCompactAccessory()`. `compactItems()` is the left-ear counterpart.
 ///
 /// A comment or a review checklist cannot prevent that, because the ear accepts
 /// `AnyView` and any new branch can trivially reintroduce text. So the right ear does not

@@ -202,7 +202,7 @@ public struct FullHubExpandedView: View {
             tab.iconView(size: isActive ? 12 : 11)
                 .scaleEffect(isActive ? 1.08 : 1.0)
             if isActive {
-                Text(tab.rawValue)
+                Text(tab.displayName)
                     .font(IslandFont.caption)
                     .lineLimit(1)
                     .transition(.opacity.combined(with: .scale(scale: 0.88)))

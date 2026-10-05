@@ -16,3 +16,9 @@ main
 
 # Local scratch (throwaway prompts, agent output, notes)
 tmp/
+
+# Agent design/plan docs (brainstorming artifacts, not project documentation)
+docs/superpowers/
+
+# Brainstorming visual companion working files
+.superpowers/

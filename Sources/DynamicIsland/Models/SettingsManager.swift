@@ -176,7 +176,28 @@ public class SettingsManager: ObservableObject {
 
     /// Returns true when the given tab should appear in the tab bar.
     public func isTabVisible(_ tab: IslandTab) -> Bool {
-        !hiddenTabs.contains(tab.rawValue)
+        !resolvedHiddenTabs.contains(IslandTab.migrateLegacyTabID(tab.rawValue))
+    }
+
+    /// Rewrites a persisted tab id through `IslandTab.migrateLegacyTabID`.
+    ///
+    /// Reading a raw id is the only point where a stored string becomes a live tab,
+    /// so migrating there covers `customTabOrder` and `hiddenTabs` together. Doing
+    /// it in the accessors rather than as a one-off migration at launch means a tab
+    /// id that gains a mapping later is fixed for existing users too, with no second
+    /// migration path to forget.
+    private static func migratedTabID(_ raw: String) -> String {
+        IslandTab.migrateLegacyTabID(raw)
+    }
+
+    /// The user's tab order, with any legacy ids rewritten to current ones.
+    public var resolvedCustomTabOrder: [String] {
+        customTabOrder.map(Self.migratedTabID)
+    }
+
+    /// The user's hidden set, with any legacy ids rewritten to current ones.
+    public var resolvedHiddenTabs: Set<String> {
+        Set(hiddenTabs.map(Self.migratedTabID))
     }
 
     /// Raw values of tabs specifying their custom display order.
@@ -226,29 +247,30 @@ public class SettingsManager: ObservableObject {
     /// Orders the provided array of tabs according to customTabOrder.
     /// Unlisted tabs (e.g. newly loaded plugins) are cleanly appended at the end.
     public func orderedTabs(from tabs: [IslandTab]) -> [IslandTab] {
-        guard !customTabOrder.isEmpty else { return tabs }
-        
+        let order = resolvedCustomTabOrder
+        guard !order.isEmpty else { return tabs }
+
         var tabMap: [String: IslandTab] = [:]
         for tab in tabs {
-            tabMap[tab.rawValue] = tab
+            tabMap[IslandTab.migrateLegacyTabID(tab.rawValue)] = tab
         }
-        
+
         var result: [IslandTab] = []
         var consumed = Set<String>()
-        
-        for id in customTabOrder {
+
+        for id in order {
             if let tab = tabMap[id] {
                 result.append(tab)
                 consumed.insert(id)
             }
         }
-        
+
         for tab in tabs {
-            if !consumed.contains(tab.rawValue) {
+            if !consumed.contains(IslandTab.migrateLegacyTabID(tab.rawValue)) {
                 result.append(tab)
             }
         }
-        
+
         return result
     }
 

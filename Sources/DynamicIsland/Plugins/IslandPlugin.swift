@@ -85,15 +85,22 @@ public protocol IslandPlugin: AnyObject, Identifiable {
     @ViewBuilder
     func makeContentView() -> AnyView
     
-    /// Returns an optional compact ear accessory to display in the closed notch (e.g. unread bubble).
-    func makeCompactAccessory() -> AnyView?
+    /// Returns the items this plugin wants in the closed-notch **left** ear.
+    ///
+    /// Data, not a view: the left ear measures and scrolls its contents, and a
+    /// pre-built `AnyView` arrives already laid out, so it cannot be placed by a
+    /// marquee. Presentation owns the animation; a plugin only declares content.
+    ///
+    /// Use `compactStatusToken()` for the *right* ear instead, which is
+    /// text-free and enforced by `RightEarToken`.
+    func compactItems() -> [CompactEarItem]
     
     /// Returns an optional **text-free** status token for the closed-notch right ear.
     ///
     /// The right ear is a reserved, glanceable surface: only `RightEarToken` values are
     /// accepted, and every token is graphical except `battery`. This is the correct hook
     /// for plugins that want presence in the right ear (e.g. an unread dot). Use
-    /// `makeCompactAccessory()` for the *left* ear, which does permit text.
+    /// `compactItems()` for the *left* ear, which does permit text.
     func compactStatusToken() -> RightEarToken?
     
     /// Returns an optional settings view for the Preferences window.
@@ -120,7 +127,7 @@ public extension IslandPlugin {
     func onDisable() {}
     func onTabSelected() {}
     func onTabDeselected() {}
-    func makeCompactAccessory() -> AnyView? { nil }
+    func compactItems() -> [CompactEarItem] { [] }
     func compactStatusToken() -> RightEarToken? { nil }
     func makeSettingsView() -> AnyView? { nil }
     func makeIconView(size: CGFloat) -> AnyView? { nil }

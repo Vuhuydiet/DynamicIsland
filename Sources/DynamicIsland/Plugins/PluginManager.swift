@@ -16,7 +16,10 @@ public class PluginManager: ObservableObject {
     public func setup() {
         guard !isSetup else { return }
         isSetup = true
-        register(plugin: MessengerPlugin.shared)
+        // Web apps are data, not a hardcoded registration. `sync` builds one
+        // `WebAppPlugin` per stored descriptor, so the seeded entry and anything the
+        // user adds later are registered by the same call.
+        WebAppRegistry.shared.sync()
     }
     
     // MARK: - App Icon Utilities

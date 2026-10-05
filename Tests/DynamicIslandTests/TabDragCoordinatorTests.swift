@@ -20,15 +20,15 @@ import Foundation
 //
 // ── Why every test below injects `fullOrder` explicitly ────────────────────────
 // `IslandTab.allCases` is NOT a pure enumeration: it resolves through
-// `SettingsManager` and `PluginManager`, and `defaultTabs` reads
-// `MessengerPlugin.shared.isEnabled`, which touches a `WKWebView`. In a headless
-// `swift test` process that traps with SIGTRAP. Every test therefore passes the
-// full order in as data, which is also the reason the production code accepts it
+// `SettingsManager` and `PluginManager`, and `defaultTabs` walks
+// `PluginManager.shared.activePlugins`, whose members each own a `WKWebView`. In a
+// headless `swift test` process that traps with SIGTRAP. Every test therefore passes
+// the full order in as data, which is also the reason the production code accepts it
 // as a parameter instead of reading the global internally. If you add a test here,
 // pass `fullOrder:` explicitly rather than relying on the default.
 
 /// A stand-in for the full tab order that never touches the plugin registry.
-private let fullOrder: [IslandTab] = [.media, .timer, .clipboard, .notes, .messenger]
+private let fullOrder: [IslandTab] = [.media, .timer, .clipboard, .notes]
 
 @Suite("Tab bar gesture state machine")
 struct TabDragCoordinatorTests {
@@ -187,7 +187,7 @@ struct TabReorderTests {
 
     @Test("A reorder is a pure permutation — no tab is lost or duplicated")
     func reorderIsAPermutation() {
-        let base: [IslandTab] = [.media, .timer, .clipboard, .notes, .messenger]
+        let base: [IslandTab] = [.media, .timer, .clipboard, .notes, .plugin(id: "com.example.webapp")]
         for target in 0..<base.count {
             for tab in base {
                 let result = TabDragCoordinator.reorderedTabs(

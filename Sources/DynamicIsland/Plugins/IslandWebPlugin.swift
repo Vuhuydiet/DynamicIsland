@@ -38,12 +38,9 @@ public class IslandWebController: NSObject, ObservableObject, WKNavigationDelega
     @Published public var canGoForward: Bool = false
     @Published public var estimatedProgress: Double = 0.0
     @Published public var currentURL: URL?
-    @Published public var pageTitleUnreadCount: Int = 0
-    
+
     /// Callback when the web page issues an HTML5 Web Notification via window.Notification
     public var onNotificationReceived: ((_ title: String, _ body: String, _ icon: String?) -> Void)?
-    /// Callback when the page title changes indicating new incoming messages (e.g. (1) Alice: Hello)
-    public var onTitleNotificationTriggered: ((_ count: Int, _ rawTitle: String) -> Void)?
     
     public let configuration: IslandWebConfiguration
     public private(set) var webView: WKWebView!
@@ -249,7 +246,6 @@ public class IslandWebController: NSObject, ObservableObject, WKNavigationDelega
             DispatchQueue.main.async {
                 let newTitle = web.title ?? ""
                 self?.title = newTitle
-                self?.parseUnreadCount(from: newTitle)
             }
         }
         
@@ -282,32 +278,6 @@ public class IslandWebController: NSObject, ObservableObject, WKNavigationDelega
                 self?.canGoForward = web.canGoForward
             }
         }
-    }
-    
-    private func parseUnreadCount(from title: String) {
-        let oldCount = pageTitleUnreadCount
-        // Many web apps format titles as "(N) Messenger" or "(N) Alice: Hello"
-        guard title.hasPrefix("(") else {
-            pageTitleUnreadCount = 0
-            return
-        }
-        if let closeParenIndex = title.firstIndex(of: ")") {
-            let start = title.index(after: title.startIndex)
-            let countString = String(title[start..<closeParenIndex])
-            if let count = Int(countString) {
-                pageTitleUnreadCount = count
-                
-                // If unread count increased, notify listeners
-                if count > oldCount {
-                    let remainder = String(title[title.index(after: closeParenIndex)...]).trimmingCharacters(in: .whitespaces)
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onTitleNotificationTriggered?(count, remainder)
-                    }
-                }
-                return
-            }
-        }
-        pageTitleUnreadCount = 0
     }
     
     // MARK: - WKScriptMessageHandler

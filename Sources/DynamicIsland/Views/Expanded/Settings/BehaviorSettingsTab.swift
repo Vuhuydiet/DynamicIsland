@@ -125,7 +125,7 @@ public struct BehaviorSettingsTab: View {
                                 .foregroundColor(.secondary.opacity(isDragging ? 0.9 : 0.55))
                                 .frame(width: 18, height: 22)
                                 .contentShape(Rectangle())
-                                .help("Drag to reorder \(tab.rawValue)")
+                                .help("Drag to reorder \(tab.displayName)")
                                 .gesture(
                                     DragGesture(minimumDistance: 3)
                                         .onChanged { value in
@@ -159,7 +159,7 @@ public struct BehaviorSettingsTab: View {
 
                             // 3. Tab Title & Subtitle
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(tab.rawValue)
+                                Text(tab.displayName)
                                     .font(.system(size: 12.5, weight: .medium))
                                     .foregroundColor(settings.isTabVisible(tab) ? .primary : .secondary)
 
@@ -187,7 +187,7 @@ public struct BehaviorSettingsTab: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(idx == 0)
-                                .help("Move \(tab.rawValue) up")
+                                .help("Move \(tab.displayName) up")
 
                                 Button(action: {
                                     withAnimation(IslandSpring.tabSlide) {
@@ -203,7 +203,7 @@ public struct BehaviorSettingsTab: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(idx >= allTabs.count - 1)
-                                .help("Move \(tab.rawValue) down")
+                                .help("Move \(tab.displayName) down")
                             }
 
                             // 5. Divider
@@ -280,8 +280,6 @@ public struct BehaviorSettingsTab: View {
             return "Clipboard history & quick copy items"
         case .notes:
             return "Persistent scratchpad & quick notes"
-        case .messenger:
-            return "Facebook Messenger web app & live chats"
         case .plugin(let id):
             if let plugin = PluginManager.shared.plugin(for: id) {
                 return plugin.subtitle

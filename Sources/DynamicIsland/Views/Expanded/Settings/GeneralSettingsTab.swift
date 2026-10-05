@@ -329,7 +329,7 @@ public struct OpenedOptionPreviewCard: View {
             HStack(spacing: 3) {
                 ForEach(IslandTab.allCases) { tab in
                     let isActive = tab == activePreviewTab
-                    Text(tab.rawValue)
+                    Text(tab.displayName)
                         .font(.system(size: 8, weight: isActive ? .bold : .regular))
                         .foregroundColor(isActive ? .white : .white.opacity(0.5))
                         .padding(.horizontal, 6)
@@ -407,7 +407,7 @@ public struct OpenedOptionPreviewCard: View {
                 )
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(activePreviewTab == .media ? "Starboy" : activePreviewTab.rawValue)
+                Text(activePreviewTab == .media ? "Starboy" : activePreviewTab.displayName)
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.white)
                 Text(activePreviewTab == .media ? "The Weeknd • Daft Punk" : "Interactive Tool Viewport")

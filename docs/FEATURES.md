@@ -159,27 +159,54 @@ Hovering any stat reveals the precise figure in a tooltip.
 
 ---
 
-## 7. Plugins & Apps
+## 7. Plugins & Web Apps
 
 Any app can be injected into the island — a native Swift tool or a full web
-application. Messenger ships built in; WhatsApp, Slack, Discord, and ChatGPT are all
-a five-minute integration away. See [`PLUGINS.md`](PLUGINS.md).
+application. See [`PLUGINS.md`](PLUGINS.md).
+
+**Adding a web app takes about ten seconds.** Open **Preferences → Plugins**, paste an
+address, press **Add**. There is no plugin to write and no code to compile: each web
+app is a stored descriptor that the same `WebAppPlugin` renders. A missing `https://`
+is filled in for you, and a bad address is rejected with a specific reason instead of
+becoming a tab that loads nothing. Messenger is seeded this way — it is an ordinary
+entry you can rename, edit, disable, or delete, and re-add from **Presets**.
+> [!NOTE]
+> **Native `.app` integration is not offered.** macOS provides no supported way to
+> embed another app's UI in a panel. The workarounds (Screen Recording to mirror a
+> window, Accessibility to re-render an `AXUIElement` tree) would mean a permission
+> prompt in a menu-bar app, and the Accessibility route breaks on every app update —
+> so no import affordance ships, rather than shipping one that cannot work.
 
 | Capability | What you get |
 | :--- | :--- |
+| **Add by URL** | Paste any address; a separate tab and web session are created for it |
 | **Dynamic sizing** | Integrated apps get a larger viewport automatically |
-| **Authentic icons** | A 6-tier resolution pipeline finds the real app logo automatically |
-| **Per-plugin sound** | Every plugin is sound-configurable with **zero** extra UI code |
-| **Live notifications** | Web notifications and unread badges surface as in-notch alert pills |
-| **Unread badges** | Unread counts appear on the tab pill *and* in the closed notch |
-| **Tab ordering** | Plugin tabs participate in the user's custom tab order |
+| **Persistent login** | Cookies and `localStorage` survive relaunch, per site |
+| **Per-site zoom** | Zoom is stored per host, so two web apps don't share one setting |
+| **Authentic icons** | Each tab's icon is fetched from the site itself (`/favicon.ico`, then `/apple-touch-icon.png`) and cached on disk, so a new app shows its real logo without you hunting for one. Sites that publish neither keep a neutral globe — a tab never borrows another app's icon |
+| **Per-plugin sound** | Every app is sound-configurable with **zero** extra UI code |
+| **Live notifications** | A page's own `new Notification()` surfaces as an in-notch alert |
+| **Multiple alerts** | Simultaneous alerts all stay visible, each on its own timer |
+| **Tab ordering** | Web app tabs participate in your custom tab order |
 
-**In-notch alerts** — a notification arriving while the island is closed appears
-immediately in the left ear with the app icon and sender, and the right ear shows the
-sender's **icon only** (never message text, per the right-ear contract). The plugin's
-own configured alert cue plays. Banners auto-dismiss after 4.5 seconds; tapping one
-opens the island directly into that plugin's tab. The same alert is also posted as a
-native macOS notification, and clicking that banner routes to the plugin tab too.
+**In-notch alerts** — a notification arriving while the island is closed scrolls
+through the left ear as a marquee: the app's icon and the sender, travelling right and
+retiring once clear. The right ear shows the **icon only**, never message text (per the
+right-ear contract). The app's own configured alert cue plays. Banners auto-dismiss
+after 4.5 seconds; tapping one opens the island directly into that app's tab. The same
+alert is also posted as a native macOS notification, and clicking that banner routes to
+the tab too.
+
+The ear is a fixed 56pt, so when alerts are scrolling a running timer drops its digits
+and shows its icon alone — the countdown keeps its own fixed position rather than
+being carried off the edge, where it would expire unseen.
+
+> [!NOTE]
+> **Alerts come only from a page asking for them.** The old unread badge, which parsed
+> a count out of the page title (`(3) Alice: hi`), is gone. The title is content the
+> page controls, so for an address you typed it meant a site could display an invented
+> unread count and raise macOS banners on its own. Unread presence is now shown by the
+> scrolling alert and the right-ear icon.
 
 ---
 

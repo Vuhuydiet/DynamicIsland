@@ -7,65 +7,93 @@ public enum IslandTab: Hashable, Identifiable, Sendable, CaseIterable {
     case timer
     case clipboard
     case notes
-    case messenger
     case plugin(id: String)
-    
+
+    /// The raw string form persisted in `customTabOrder` and `hiddenTabs`.
     public var id: String {
         switch self {
         case .media: return "Media"
         case .timer: return "Timer"
         case .clipboard: return "Clipboard"
         case .notes: return "Notes"
-        case .messenger: return "Messenger"
         case .plugin(let id): return id
         }
     }
-    
+
     public var rawValue: String { id }
-    
+
     public init?(rawValue: String) {
-        switch rawValue {
+        let migrated = IslandTab.migrateLegacyTabID(rawValue)
+        switch migrated {
         case "Media": self = .media
         case "Timer": self = .timer
         case "Clipboard": self = .clipboard
         case "Notes": self = .notes
-        case "Messenger": self = .messenger
         default:
-            self = .plugin(id: rawValue)
+            self = .plugin(id: migrated)
         }
     }
-    
+
+    /// Maps a tab id persisted by an earlier build onto today's ids.
+    ///
+    /// `"Messenger"` was a dedicated `IslandTab` case; web apps are now
+    /// `.plugin(id:)` keyed by descriptor id. Both `customTabOrder` and
+    /// `hiddenTabs` store the raw string, so without this an upgrading user's tab
+    /// order silently loses its position and a tab they had hidden reappears.
+    ///
+    /// Idempotent, and a pure function of its input, so the same answer is produced
+    /// on read, in a test, and in a migration script.
+    public static func migrateLegacyTabID(_ raw: String) -> String {
+        raw == "Messenger" ? WebAppLegacyID.messenger : raw
+    }
+
+    /// The label shown in the tab bar and the Behaviour list.
+    ///
+    /// Not `rawValue`: every web app is a `.plugin(id:)`, so the raw id is the
+    /// normal case rather than the exception, and rendering it would put
+    /// `com.dynamicisland.plugin.messenger` in front of the user. Resolved from the
+    /// registry so the name is written in exactly one place.
+    public var displayName: String {
+        switch self {
+        case .media: return "Media"
+        case .timer: return "Timer"
+        case .clipboard: return "Clipboard"
+        case .notes: return "Notes"
+        case .plugin(let id):
+            return PluginManager.shared.plugin(for: id)?.name
+                ?? WebAppStore.shared.descriptor(for: id)?.name
+                // The id survives in `customTabOrder` after an app is removed, so
+                // this branch is reachable. Showing a bare "Plugin" would be a
+                // confident wrong answer for every removed app; the id is ugly but
+                // true, and the tab is pruned before the user meets it in the bar.
+                ?? id
+        }
+    }
+
     public var icon: String {
         switch self {
         case .media: return "music.note"
         case .timer: return "timer"
         case .clipboard: return "doc.on.clipboard.fill"
         case .notes: return "note.text"
-        case .messenger: return MessengerPlugin.shared.icon
         case .plugin(let id):
             return PluginManager.shared.plugin(for: id)?.icon ?? "puzzlepiece.extension"
         }
     }
-    
+
     public func iconView(size: CGFloat = 11) -> AnyView {
         PluginIconManager.shared.iconView(for: self, size: size)
     }
-        
+
     public static var builtInTabs: [IslandTab] {
-        [.media, .timer, .clipboard, .notes, .messenger]
+        [.media, .timer, .clipboard, .notes]
     }
-    
+
     public static var defaultTabs: [IslandTab] {
-        var tabs: [IslandTab] = [.media, .timer, .clipboard, .notes]
-        if MessengerPlugin.shared.isEnabled {
-            tabs.append(.messenger)
-        }
-        for plugin in PluginManager.shared.activePlugins where plugin.id != MessengerPlugin.pluginID {
-            tabs.append(.plugin(id: plugin.id))
-        }
-        return tabs
+        [.media, .timer, .clipboard, .notes]
+            + PluginManager.shared.activePlugins.map { IslandTab.plugin(id: $0.id) }
     }
-    
+
     public static var allCases: [IslandTab] {
         SettingsManager.shared.orderedTabs(from: defaultTabs)
     }
@@ -90,7 +118,7 @@ public class AppState: ObservableObject {
     @Published public var isHovering: Bool = false
     @Published public var isDraggingOver: Bool = false
     @Published public var isFullScreen: Bool = false
-    
+
     private func notifyTabLifecycleChange(from oldTab: IslandTab, to newTab: IslandTab) {
         plugin(for: oldTab)?.onTabDeselected()
         let newPlugin = plugin(for: newTab)
@@ -106,14 +134,10 @@ public class AppState: ObservableObject {
     
     /// Resolves the plugin that owns a tab, if any.
     private func plugin(for tab: IslandTab) -> (any IslandPlugin)? {
-        switch tab {
-        case .messenger:
-            return MessengerPlugin.shared
-        case .plugin(let id):
+        if case .plugin(let id) = tab {
             return PluginManager.shared.plugin(for: id)
-        default:
-            return nil
         }
+        return nil
     }
     
     private var hoverWorkItem: DispatchWorkItem?
@@ -155,23 +179,15 @@ public class AppState: ObservableObject {
     }
     
     public static let expandedWidth: CGFloat = 560.0
-    
+
     public var expandedWidth: CGFloat {
         // Single opened shell: the base width is constant. Integrated app plugins
         // still widen the island to their declared `preferredIslandWidth`.
-        let baseWidth = AppState.expandedWidth
-        
-        switch activeTab {
-        case .messenger:
-            return MessengerPlugin.shared.preferredIslandWidth ?? 740.0
-        case .plugin(let id):
-            if let plugin = PluginManager.shared.plugin(for: id) {
-                return plugin.preferredIslandWidth ?? 740.0
-            }
-            return baseWidth
-        default:
-            return baseWidth
+        if case .plugin(let id) = activeTab,
+           let plugin = PluginManager.shared.plugin(for: id) {
+            return plugin.preferredIslandWidth ?? 740.0
         }
+        return AppState.expandedWidth
     }
     
     /// Fixed ear width for the closed notch, in points.
@@ -218,16 +234,14 @@ public class AppState: ObservableObject {
             return 78.0
         }
     }
-    
+
+    /// The content region's height for the active tab.
     public var currentContentHeight: CGFloat {
-        switch activeTab {
-        case .messenger:
-            return MessengerPlugin.shared.preferredContentHeight
-        case .plugin(let id):
-            return PluginManager.shared.plugin(for: id)?.preferredContentHeight ?? 400.0
-        default:
-            return 170.0
+        if case .plugin(let id) = activeTab,
+           let plugin = PluginManager.shared.plugin(for: id) {
+            return plugin.preferredContentHeight
         }
+        return 170.0
     }
     
     public func expandedHeight(isNotchMode: Bool, notchHeight: CGFloat) -> CGFloat {
@@ -243,7 +257,7 @@ public class AppState: ObservableObject {
         }
         return mainH
     }
-    
+
     public func toggleExpand() {
         if isExpanded {
             collapse()
@@ -251,7 +265,7 @@ public class AppState: ObservableObject {
             expand()
         }
     }
-    
+
     public func expand(tab: IslandTab? = nil) {
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
@@ -263,9 +277,10 @@ public class AppState: ObservableObject {
                 isExpanded = true
             }
             SoundManager.shared.play(.expand)
+        } else {
         }
     }
-    
+
     public func collapse(force: Bool = false) {
         if isPinned && !force { return }
         hoverWorkItem?.cancel()
@@ -290,25 +305,24 @@ public class AppState: ObservableObject {
     
     public func handleMouseEnter() {
         guard !isExpanded else { return }
-        
+
         // Strict boundary check: cursor must physically be inside the notch / compact pill
         if let screen = NSScreen.main {
             let mouse = NSEvent.mouseLocation
             let detector = NotchDetector.shared
             let isNotchMode = detector.isNotchMode
-
             let notchH = detector.currentNotch.notchHeight > 0 ? detector.currentNotch.notchHeight : 32.0
             let compactW = compactIslandWidth
             let compactH = isNotchMode ? notchH : 34.0
             let topInset: CGFloat = isNotchMode ? 0.0 : 8.0
-            
+
             let marginX: CGFloat = isFullScreen ? 24.0 : 0.0
             let marginY: CGFloat = isFullScreen ? 12.0 : 0.0
-            
+
             let inX = mouse.x >= (screen.frame.midX - compactW / 2.0 - marginX)
                    && mouse.x <= (screen.frame.midX + compactW / 2.0 + marginX)
             let inY = mouse.y >= (screen.frame.maxY - topInset - compactH - marginY)
-            
+
             guard inX && inY else {
                 return
             }
@@ -383,7 +397,7 @@ public class AppState: ObservableObject {
 
         guard !isPinned else { return }
         guard isExpanded else { return }
-        
+
         collapse()
     }
     

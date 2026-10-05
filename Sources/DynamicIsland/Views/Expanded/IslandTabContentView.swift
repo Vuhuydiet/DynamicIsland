@@ -16,7 +16,6 @@ public struct IslandTabContentView: View {
                 case .timer:     TimerView()
                 case .clipboard: ClipboardView()
                 case .notes:     NotesView()
-                case .messenger: MessengerPlugin.shared.makeContentView()
                 case .plugin(let id):
                     if let plugin = PluginManager.shared.plugin(for: id) {
                         plugin.makeContentView()

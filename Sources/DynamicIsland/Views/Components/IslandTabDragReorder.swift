@@ -69,9 +69,9 @@ public class TabDragCoordinator: ObservableObject {
             initialOrderedTabs = orderedTabs
             // `@autoclosure` so the snapshot is resolved only when a drag actually
             // starts, and only once. `IslandTab.allCases` is not free: it resolves
-            // through `PluginManager` and `MessengerPlugin` (a `WKWebView`), so it
-            // must stay off the hot path of every `onChanged` frame. Tests pass an
-            // explicit value to stay off the window server entirely.
+            // through `PluginManager`, whose web-app plugins each own a `WKWebView`,
+            // so it must stay off the hot path of every `onChanged` frame. Tests pass
+            // an explicit value to stay off the window server entirely.
             initialFullOrder = fullOrder()
             initialIndex = orderedTabs.firstIndex(of: tab) ?? 0
             currentTargetIndex = initialIndex
@@ -211,12 +211,12 @@ public class TabDragCoordinator: ObservableObject {
     ///
     /// `fullOrder` is a **parameter**, not read from `IslandTab.allCases`, and that
     /// is deliberate. `allCases` is not a pure enumeration: it resolves through
-    /// `SettingsManager` and `PluginManager`, and `defaultTabs` reads
-    /// `MessengerPlugin.shared.isEnabled`, which touches a `WKWebView` and therefore
-    /// requires a window server. Reading it from this function would make the whole
-    /// reorder rule untestable and would trap in a headless test process. The
-    /// caller passes the snapshot it already holds, so the value is captured once
-    /// per gesture and cannot change mid-commit.
+    /// `SettingsManager` and `PluginManager`, and `defaultTabs` walks
+    /// `PluginManager.shared.activePlugins`, whose web-app plugins each own a
+    /// `WKWebView` and therefore require a window server. Reading it from this
+    /// function would make the whole reorder rule untestable and would trap in a
+    /// headless test process. The caller passes the snapshot it already holds, so
+    /// the value is captured once per gesture and cannot change mid-commit.
     ///
     /// - When `visibleOnly` is true, only the visible subset is reshuffled and the
     ///   result is woven back into `fullOrder`, leaving every hidden tab in its

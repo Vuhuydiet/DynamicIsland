@@ -158,16 +158,6 @@ public class PluginIconManager: ObservableObject {
             return AnyView(Image(systemName: "doc.on.clipboard.fill").font(.system(size: size, weight: .bold)))
         case .notes:
             return AnyView(Image(systemName: "note.text").font(.system(size: size, weight: .bold)))
-        case .messenger:
-            if let img = icon(for: MessengerPlugin.pluginID) {
-                return AnyView(
-                    Image(nsImage: img)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: size + 2, height: size + 2)
-                )
-            }
-            return AnyView(MessengerAppIconView(size: size + 2))
         case .plugin(let id):
             if let img = icon(for: id) {
                 return AnyView(
@@ -186,23 +176,45 @@ public class PluginIconManager: ObservableObject {
     }
     
     // MARK: - Helpers
-    
+
+    /// The filenames an id's icon might be stored under, most specific first.
+    ///
+    /// Web-app ids embed the whole host, so the *last* component is often a public
+    /// suffix: `com.dynamicisland.webapp.web.web.whatsapp.com` ends in `com`, and
+    /// matching only that would make `whatsapp.png` unreachable. Leading platform
+    /// labels are therefore skipped, so that id also tries `whatsapp`.
     private func candidateKeys(for id: String) -> [String] {
         var keys = [id]
         let lower = id.lowercased()
         if !keys.contains(lower) {
             keys.append(lower)
         }
-        if let last = id.split(separator: ".").last {
-            let lastStr = String(last)
-            if !keys.contains(lastStr) {
-                keys.append(lastStr)
-            }
-            let lowerLast = lastStr.lowercased()
-            if !keys.contains(lowerLast) {
-                keys.append(lowerLast)
+        for label in Self.iconLabelCandidates(for: id) {
+            if !keys.contains(label) {
+                keys.append(label)
             }
         }
         return keys
     }
+
+    /// Host labels worth trying as a filename, most specific first.
+    static func iconLabelCandidates(for id: String) -> [String] {
+        let labels = id.lowercased().split(separator: ".").map(String.init)
+        // Drop platform labels and the trailing public suffix, keeping at least one
+        // label so a single-label host still resolves.
+        var trimmed = labels
+        while trimmed.count > 1, let first = trimmed.first, Self.nonIconLabels.contains(first) {
+            trimmed.removeFirst()
+        }
+        while trimmed.count > 1, let last = trimmed.last, Self.nonIconLabels.contains(last) {
+            trimmed.removeLast()
+        }
+        return trimmed + labels.reversed()
+    }
+
+    /// Host labels that are never a useful icon filename.
+    private static let nonIconLabels: Set<String> = [
+        "com", "net", "org", "io", "co", "app", "dev", "me", "ai", "sh", "tv", "gg",
+        "www", "web", "m", "chat", "mail", "mobile",
+    ]
 }

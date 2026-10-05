@@ -62,10 +62,11 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 The test target is deliberately narrow: **pure logic only**, running headless. What
 that excludes, and the specific traps, are in [`docs/TESTING.md`](docs/TESTING.md).
 
-Current suites: `DesktopMediaAppTests`, `DockingModeTests`, `IslandEditActionTests`,
-`MediaBrowserTests`, `MediaManagerOwnershipTests`, `MediaSourceClassificationTests`,
-`RightEarTokenTests`, `SoundManagerMappingTests`, `TabDragCoordinatorTests`,
-`TabReorderTests`. (`TabDragCoordinatorTests` and `TabReorderTests` are two suites
+Current suites: `CompactEarMarqueeTests`, `DefaultWebAppConfigTests`, `DesktopMediaAppTests`,
+`DockingModeTests`, `FaviconCandidateTests`, `IslandEditActionTests`, `MediaBrowserTests`,
+`MediaManagerOwnershipTests`, `MediaSourceClassificationTests`, `RightEarTokenTests`,
+`SoundManagerMappingTests`, `TabDragCoordinatorTests`, `WebAppTabMigrationTests`,
+`WebAppURLTests`. (`TabDragCoordinatorTests` and `TabReorderTests` are two suites
 in one file — `Tests/DynamicIslandTests/TabDragCoordinatorTests.swift`.)
 
 ---

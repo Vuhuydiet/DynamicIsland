@@ -38,6 +38,18 @@ A closed enum is both the enforcement mechanism and the test surface.
 
 **2.7 Never fabricate system state.** No demo mocks, simulated activity, or stand-ins for a capability the app does not have.
 
+**2.8 Decide for the long term, and decide it yourself.** When two designs are defensible, pick the one that is still right after the next few rewrites — not the cheaper one today, and not the one that defers the choice.
+Deferring is a decision, and it is the expensive kind: it leaves an unmade decision inside code that now depends on it.
+So make the call, state the choice and its reasoning briefly, and let the user redirect — handing back a menu of options for a call that is yours to make is a tax, not caution.
+Ask only when it is genuinely theirs: their product, their machine, their risk, their money.
+
+**2.9 Fix the mechanism, not the symptom.** When a behaviour is wrong, the defect is a *cause*; the visible annoyance is only where that cause happens to surface.
+So find the thing that makes the symptom unavoidable, and change that — a fix that leaves the cause in place is a workaround, and it will read as a workaround to the next person, who will then either re-patch it or build on it.
+A symptom fix is recognisable in hindsight: it adds a threshold, a tolerance, a delay, a retry, a special case, or a "just while this is happening" guard.
+Those are the signatures of treating the observation instead of the mechanism, because each one buys correctness by *disagreeing less often* rather than by being right.
+The cause is usually structural — an ownership mistake, a duplicated source of truth, work on the wrong layer — and those are worth the larger change, because a structural cause is the only kind that stops coming back.
+Corollary: **never trade a mechanism for a magic number.** If a fix needs a constant tuned to hide a race, the race is still there.
+
 ---
 
 ## 3. 🧪 Testability Is a Design Constraint
@@ -91,3 +103,9 @@ Relaunch rather than just build (a second instance will not take over from the f
 **6.3 Commit and push only once the user has confirmed the feature works.** Tests prove the policy functions; only they can confirm it does what they meant, and silence is not approval.
 `main` is public with no CI and no review, so never force-push it, and a *tracked* file is never ignored — read what you staged.
 Pushing does not cut a release; `v0.1.0` was tagged separately, for the same reason refactors get their own commit.
+
+**6.4 The running app is the review — never gate work on a document sign-off.**
+The user verifies changes by using the app, not by reading prose; design docs, specs, and plans are not a gate they will pass through, and asking them to review one is a wasted round trip.
+So decide the design yourself (§2.8), implement, and go straight to §6.2 — build, install, relaunch, and report what you actually observed.
+This makes §6.2 *the* review step rather than a final flourish: if the launch was skipped, there is nothing to review and the change is not finished.
+`AGENTS.md` is the deliberate exception — it *is* read — so treat an edit to it as a real change to be confirmed, and keep it free of anything that only matters to one feature.
