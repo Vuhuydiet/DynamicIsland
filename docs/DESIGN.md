@@ -8,7 +8,7 @@ The *why* is what stops it being reverted as redundant; if a commitment is obvio
 These used to live in [`../AGENTS.md`](../AGENTS.md) §2, where they were mixed in with rules about how to work.
 They are separated because they are **commitments about this app**, not instructions to a contributor: a rule earns its place in `AGENTS.md` by applying everywhere, and these apply to one design.
 
-Code cites the numbered commitment it is satisfying, e.g. `AGENTS.md §2.2` → **Fixed Surfaces** below.
+Code cites the numbered commitment it is satisfying, e.g. `DESIGN.md §1` → **Fixed Surfaces** below.
 
 ---
 
