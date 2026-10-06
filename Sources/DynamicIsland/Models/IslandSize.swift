@@ -8,7 +8,7 @@ import CoreGraphics
 /// inset, a 38pt header, and 16pt of bottom padding. Storing the total would mean
 /// storing a number that changes meaning the moment the island re-docks to a
 /// display with a different notch, so two stored sizes could disagree about one
-/// island (docs/DESIGN.md §1).
+/// island.
 ///
 /// Deliberately free of AppKit, SwiftUI, and every global, so the clamp and the
 /// drag geometry are pure functions of their parameters and the guard is the same
