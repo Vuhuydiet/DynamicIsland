@@ -59,7 +59,17 @@ else
 fi
 
 echo "📝 Creating Info.plist..."
-cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
+# The bundle version is a single source in VERSION at the repo root, so
+# `git tag` and `defaults read ... CFBundleShortVersionString` always agree.
+# VERSION is checked in like DefaultWebApps.json above: a missing file means
+# the build environment is broken, and a hard-coded fallback here would put
+# the version stamp and the git tag on diverging rails without anyone noticing.
+if [ ! -f "$DIR/VERSION" ]; then
+    echo "❌ VERSION is missing — the bundle would ship with no version stamp." >&2
+    exit 1
+fi
+BUNDLE_VERSION=$(cat "$DIR/VERSION")
+cat << EOF > "$CONTENTS_DIR/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -71,9 +81,9 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <key>CFBundleIdentifier</key>
     <string>com.dynamicisland.mac</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>${BUNDLE_VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${BUNDLE_VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
