@@ -63,7 +63,8 @@ The test target is deliberately narrow: **pure logic only**, running headless. W
 that excludes, and the specific traps, are in [`docs/TESTING.md`](docs/TESTING.md).
 
 Current suites: `CompactEarMarqueeTests`, `DefaultWebAppConfigTests`, `DesktopMediaAppTests`,
-`DockingModeTests`, `FaviconCandidateTests`, `IslandEditActionTests`, `MediaBrowserTests`,
+`DockingModeTests`, `FaviconCandidateTests`, `IslandEditActionTests`, `IslandSizeTests`,
+`MediaBrowserTests`,
 `MediaManagerOwnershipTests`, `MediaSourceClassificationTests`, `RightEarTokenTests`,
 `SoundManagerMappingTests`, `TabDragCoordinatorTests`, `WebAppNoticeTests`,
 `WebAppTabMigrationTests`, `WebAppURLTests`. (`TabDragCoordinatorTests` and

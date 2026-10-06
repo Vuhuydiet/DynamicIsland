@@ -142,13 +142,18 @@ public struct FullHubExpandedView: View {
 
             // ── Thin divider before content ───────────────────────────────
             glassRuler
-                .padding(.horizontal, 36)
+                .padding(.horizontal, 28)
                 .padding(.bottom, 5)
 
             // ── Tab Content ───────────────────────────────────────────────
+            //    Trailing/bottom inset keeps the page clear of the island's
+            //    bottom-right corner, where the resize glow lives. The glow is
+            //    drawn outside the island's shape and above SwiftUI, but a
+            //    `WKWebView` in an `NSViewRepresentable` composites above both —
+            //    so the only thing keeping them apart is this inset.
             IslandTabContentView()
                 .frame(height: appState.currentContentHeight, alignment: .top)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 24)
                 .padding(.bottom, 6)
         }
     }

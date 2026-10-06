@@ -9,6 +9,7 @@ public struct PluginsSettingsTab: View {
     @ObservedObject private var store = WebAppStore.shared
     @ObservedObject private var registry = WebAppRegistry.shared
     @ObservedObject private var appState = AppState.shared
+    @ObservedObject private var settings = SettingsManager.shared
 
     /// The shipped defaults, read once.
     ///
@@ -188,6 +189,8 @@ public struct PluginsSettingsTab: View {
                 }
             }
 
+            islandSizeControls(for: descriptor)
+
             Button {
                 appState.expand(tab: .plugin(id: descriptor.id))
             } label: {
@@ -212,7 +215,43 @@ public struct PluginsSettingsTab: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: Actions
+
+    /// The current island size for this app, and a way back to its default.
+    ///
+    /// Read through the same resolution the island itself uses, so the number shown
+    /// here is the number the user is actually looking at. A stored size that is
+    /// missing means the app is at its declared default, and the reset is absent
+    /// rather than disabled — there is nothing to reset.
+    @ViewBuilder
+    private func islandSizeControls(for descriptor: WebAppDescriptor) -> some View {
+        if let plugin = registry.plugin(for: descriptor.id) {
+            let size = appState.resolvedSize(for: plugin)
+            let isCustom = SettingsManager.shared.islandSizeOverride(for: descriptor.id) != nil
+
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Text(String(format: "%.0f × %.0f", size.width, size.contentHeight))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+
+                if isCustom {
+                    Button {
+                        SettingsManager.shared.clearIslandSizeOverride(for: descriptor.id)
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise").font(.system(size: 10, weight: .bold))
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Reset this app's island size to its default")
+                }
+            }
+            .help(isCustom
+                  ? "Island size, set by dragging the island's corner"
+                  : "Island size — drag the island's bottom-right corner to change it")
+        }
+    }
 
     /// Validates through the same parser the tests exercise, so the rejection the
     /// user sees is the rejection that is guarded.

@@ -187,13 +187,148 @@ public class AppState: ObservableObject {
     
     public static let expandedWidth: CGFloat = 560.0
 
+    /// Whether the user is currently dragging the island's resize grip.
+    ///
+    /// Read by `WindowController.checkMousePosition` to suspend the collapse rule
+    /// for the duration of the drag. A resize drag *begins* on the island's bottom
+    /// edge, which is exactly where the mouse-leave check collapses it, so
+    /// without this the island collapses under the pointer mid-gesture.
+    ///
+    /// The alternative — widening the leave margin while dragging — would also stop
+    /// the collapse, and would be worse: it buys correctness by *disagreeing less
+    /// often* about where the island is, leaving the actual overlap in place for
+    /// the next reader of that margin (AGENTS.md §2.2).
+    @Published public var isResizing: Bool = false
+
+    /// The size a resize drag started from.
+    ///
+    /// Captured once when the drag begins so every frame re-derives from the same
+    /// origin. Reading the current size instead would make the result depend on the
+    /// frame count — see `IslandSize.resized(start:translation:)`.
+    private var resizeStartSize: IslandSize?
+
+    /// The corner currently being dragged, or `nil` when no resize is live.
+    ///
+    /// Published because the *container* needs it, not the grip: pinning the dragged
+    /// edge to the pointer shifts the whole island, and the shift is a pure function of
+    /// this, the start width, and the current width. So it is derived where it is drawn
+    /// rather than pushed down as a value from the grip — a value pushed down would be
+    /// a second source of truth for "how far is the island shifted", free to disagree
+    /// with the size it is supposed to follow.
+    @Published public private(set) var activeResizeCorner: IslandGripCorner?
+
+    /// The width the live drag started from, for `IslandGripCorner.horizontalOffset`.
+    ///
+    /// `nil` when no drag is live, which is also the signal to centre the island.
+    public var resizeStartWidth: CGFloat? {
+        activeResizeCorner == nil ? nil : resizeStartSize?.width
+    }
+
+    /// The active tab's island size: the user's stored override, or what the plugin
+    /// declares.
+    ///
+    /// The single place a plugin's declared size is read. Every other reader — the
+    /// drawn frame, the tab bar, the hit test, the mouse tracker — goes through
+    /// `expandedWidth` / `currentContentHeight`, so a future caller that reached for
+    /// `plugin.preferredIslandWidth` directly would bypass the override and the
+    /// two could disagree about how big the island is.
+    ///
+    /// A stored size that is not usable is discarded in favour of the declaration,
+    /// so a corrupt preference degrades to a working island rather than to a
+    /// zero-sized or invisible one (`IslandSize.isUsable`).
+    public func resolvedSize(for plugin: any IslandPlugin) -> IslandSize {
+        let declared = IslandSize(
+            width: plugin.preferredIslandWidth ?? 740.0,
+            contentHeight: plugin.preferredContentHeight
+        )
+        guard let stored = SettingsManager.shared.islandSizeOverride(for: plugin.id),
+              IslandSize.isUsable(stored) else { return declared }
+        return IslandSize.clamp(stored)
+    }
+
     public var expandedWidth: CGFloat {
         // Single opened shell: the base width is constant. Integrated app plugins
-        // still widen the island to their declared `preferredIslandWidth`.
+        // resolve to their declared width, or to the size the user dragged them to.
         if let plugin = plugin(for: activeTab) {
-            return plugin.preferredIslandWidth ?? 740.0
+            return resolvedSize(for: plugin).width
         }
         return AppState.expandedWidth
+    }
+
+    /// Whether the active tab is an integrated app whose size the user can change.
+    ///
+    /// Tool tabs are excluded: their content is a fixed-format readout rather than
+    /// a document, and stretching it buys nothing while multiplying layout branches.
+    public var isResizable: Bool {
+        plugin(for: activeTab) != nil
+    }
+
+    /// The active tab's resolved size, for a caller that has already established
+    /// the active tab is resizable.
+    ///
+    /// Falls back to the standard integrated-app defaults on a tool tab rather than
+    /// trapping, so a caller racing a tab switch gets a usable size instead of a
+    /// crash. The grip is only ever shown when `isResizable`, so this fallback is
+    /// unreachable in practice — it exists so the ordering of two unrelated
+    /// conditions cannot become a crash.
+    public func resolvedSizeForActiveTab() -> IslandSize {
+        guard let plugin = plugin(for: activeTab) else {
+            return IslandSize(width: AppState.expandedWidth, contentHeight: 170.0)
+        }
+        return resolvedSize(for: plugin)
+    }
+
+    /// Applies a resize drag to the active plugin tab.
+    ///
+    /// `translation` is the total movement since the drag began, so the caller must
+    /// pass the gesture's running translation rather than a per-frame delta.
+    /// `from` is the size the drag started at; the first frame of a drag passes
+    /// the current size, and later frames reuse the value captured then.
+    ///
+    /// The corner is taken as a parameter rather than pre-applied by the caller
+    /// because the *direction* of the width change depends on which corner is
+    /// being dragged: pulling the leading corner outward moves the screen pointer
+    /// left, while pulling the trailing corner outward moves it right, even though
+    /// both produce an island that grows. Deriving the sign here, once, means no
+    /// caller can hand this an already-inverted delta — and getting it wrong would
+    /// not fail, it would mirror the pointer, which looks like a bad drag rather
+    /// than a sign error.
+    public func resizeActiveTab(
+        by translation: CGSize,
+        from start: IslandSize,
+        at corner: IslandGripCorner
+    ) {
+        guard let plugin = plugin(for: activeTab) else { return }
+        if !isResizing {
+            isResizing = true
+            resizeStartSize = start
+            activeResizeCorner = corner
+        }
+        let origin = resizeStartSize ?? start
+        SettingsManager.shared.setIslandSizeOverride(
+            IslandSize.resized(
+                start: origin,
+                translation: CGSize(
+                    width: corner.widthChange(for: translation),
+                    height: corner.heightChange(for: translation)
+                )
+            ),
+            for: plugin.id
+        )
+    }
+
+    /// Ends a resize drag.
+    ///
+    /// Also called from `collapse()`, because a collapse can be triggered while a
+    /// drag is live — and a flag left pinned would suspend the collapse rule
+    /// forever, wedging the island open (docs/DESIGN.md §5).
+    public func endResize() {
+        isResizing = false
+        activeResizeCorner = nil
+        resizeStartSize = nil
+        // The live drag values were deliberately not written to disk frame by frame;
+        // this is the one that must land. See `SettingsManager.islandSizeOverrides`.
+        SettingsManager.shared.flushIslandSizeOverride()
     }
     
     /// Fixed ear width for the closed notch, in points.
@@ -244,7 +379,7 @@ public class AppState: ObservableObject {
     /// The content region's height for the active tab.
     public var currentContentHeight: CGFloat {
         if let plugin = plugin(for: activeTab) {
-            return plugin.preferredContentHeight
+            return resolvedSize(for: plugin).contentHeight
         }
         return 170.0
     }
@@ -292,6 +427,11 @@ public class AppState: ObservableObject {
         hoverWorkItem = nil
         unhoverWorkItem?.cancel()
         unhoverWorkItem = nil
+        // A collapse can be triggered from outside the drag — Esc, a notification,
+        // a fullscreen transition — so the resize flag is dropped here rather than
+        // only in `endResize()`. Left pinned, it would keep suspending the
+        // mouse-leave collapse check and the island could never close again.
+        endResize()
         if force {
             isHovering = false
         }

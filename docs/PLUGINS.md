@@ -464,6 +464,39 @@ Both axes morph with spring physics when switching between tool and app tabs. Th
 panel is sized to accommodate the largest of these — see
 [`ARCHITECTURE.md`](ARCHITECTURE.md) §3 for the full geometry.
 
+### The user can override it
+
+On a plugin tab the island is **resizable**: dragging the bottom-right corner changes
+width and height, and the size is remembered per plugin.
+Nothing is drawn at that corner — the diagonal cursor that appears there on hover is
+the whole affordance, the same way AppKit signals a resizable window.
+During the drag the island tracks the pointer exactly, with no spring; the spring
+returns as soon as the drag ends.
+The whole island surface resizes and your content view follows the new frame, so a
+web app gets the larger viewport rather than being letterboxed inside a fixed one.
+
+A plugin that declares no size, or that the user never resizes, is unaffected — the
+stored size is **sparse**, so a new plugin needs no migration.
+`PluginsSettingsTab` shows the current size for each installed app and offers a
+reset, so a user who has dragged the island into an unusable size can recover
+without editing preferences.
+
+This is a property of the *presentation*, not of your plugin: you declare a
+starting point, the user owns the final size.
+A plugin does not need to do anything to support it.
+
+> [!NOTE]
+> The island's resize affordance is a glow traced along the bottom-right corner's
+> curve, not a button.
+> It is drawn *outside* the island's own shape, so a plugin does not need to leave
+> room for it — but a plugin that hosts a **native** view should know that such a view
+> draws above the island's SwiftUI overlays: `NSViewRepresentable` composites above
+> SwiftUI, and neither ZStack order nor `.overlay` can change that.
+> The glow sits on the island's edge, outside the content's frame, so nothing has to
+> be drawn over anything.
+> It accepts input only within a 64pt square on that corner, so it never shadows the
+> island's own controls.
+
 ---
 
 ## 10. Tutorial: Adding a Web App

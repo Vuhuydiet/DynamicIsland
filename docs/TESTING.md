@@ -22,7 +22,7 @@ importantly, why most of the app cannot.
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ```
 
-Current state: **151 tests** — 80 XCTest plus 71 swift-testing, all passing, completing in
+Current state: **173 tests** — 84 XCTest plus 89 swift-testing, all passing, completing in
 well under a second.
 
 > [!NOTE]
@@ -176,6 +176,33 @@ coordinator.onDragChanged(
 | The seeded app keeps its **legacy** id | The shipped `messenger.png` and persisted sound overrides are keyed by it |
 | Display names strip `www.`/`web.` and the public suffix | `web.whatsapp.com` reads as "Whatsapp", not "Web Whatsapp Com" |
 | A display name is never empty | A blank tab label is a silent failure |
+
+### `IslandSizeTests` — *"Island size clamping and drag geometry"*
+
+The pure core behind the user-resizable island. Nothing here touches AppKit, so the
+clamp and the drag arithmetic are both the enforcement and the test surface.
+
+| Test | Guards |
+| :--- | :--- |
+| Width and content height are clamped at both ends | A drag cannot produce an island the user cannot get out of |
+| A size already inside the bounds is unchanged, and clamping twice changes nothing | A stored size read on every launch must not drift |
+| A `NaN` dimension is not usable | `min(max(.nan, lo), hi)` **propagates** `NaN` — the whole reason `isUsable` is a separate function from `clamp` |
+| An infinite dimension is not usable | Same failure, reached by a different route |
+| A zero or negative dimension is not usable | A 0pt or negative width draws nothing at all |
+| Clamping an unusable size does not make it usable | Proves the guard is load-bearing, not decorative |
+| A zero translation leaves the size at the start | A click on the grip is not a resize |
+| Dragging right/down grows and left/up shrinks | A y-axis sign error is invisible until the island is inverted |
+| A drag re-derived from its start 60 times lands where one total delta does | The drift guard: an accumulating `+=` would make the result depend on frame count |
+| A drag past either bound is clamped | |
+| A size survives a JSON round trip | A `Codable` type that fails to decode is silently ignored on read, so the size would revert every launch |
+
+> [!NOTE]
+> **The drift test compares with a tolerance, and the reason is arithmetic, not
+> laxity.** Summing `3.0` sixty times in binary floating point is not exactly `180.0`
+> — measured, it lands on `179.99999999999997`. An accumulating implementation would
+> diverge by *whole points* after a dropped frame, so a `0.001` tolerance separates
+> the two failure modes completely. Asserting exact equality here would have failed
+> for a correct implementation.
 
 ### `CompactEarMarqueeTests` — *"Left ear marquee geometry"*
 

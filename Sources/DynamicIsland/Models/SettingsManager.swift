@@ -244,6 +244,99 @@ public class SettingsManager: ObservableObject {
         pluginSoundOverrides = next
     }
 
+    // MARK: - Per-Plugin Island Size Overrides
+
+    /// User-chosen island sizes, keyed by plugin id.
+    ///
+    /// Stored **sparsely**, for the same reason as `pluginSoundOverrides`: only
+    /// plugins the user actually resized have an entry, so shipping a new plugin
+    /// — or changing a plugin's declared default — needs no migration. A plugin
+    /// with no entry resolves to whatever it declares.
+    ///
+    /// Publication is **debounced**, and this is load-bearing rather than a nicety.
+    /// A resize drag calls `setIslandSizeOverride` on every pointer frame. Writing
+    /// through to `UserDefaults` synchronously on the main thread at 60–120Hz — a
+    /// `JSONEncoder` allocation plus a `defaults.set` per frame — put that whole
+    /// cost on the same thread that has to lay out and draw the island, and the
+    /// island visibly trailed the pointer, the further edge lagging worst because
+    /// every resize also invalidates the layout of everything inside it.
+    ///
+    /// A drag's *intermediate* values are throwaway: the only one that matters is
+    /// the last, which `endResize` flushes synchronously. So the live value is
+    /// published immediately (drawing must not wait on the timer) while only the
+    /// *write* is deferred, and `flush` is what makes the final value durable
+    /// before the process can exit.
+    @Published public var islandSizeOverrides: [String: IslandSize] {
+        didSet {
+            schedulePersistIslandSizeOverrides()
+        }
+    }
+
+    /// Timer backing the debounced size write. Owned here so it can be cancelled.
+    private var islandSizePersistWorkItem: DispatchWorkItem?
+
+    /// How long the size write waits for the drag to go quiet.
+    ///
+    /// Long enough to collapse a whole drag into a single write on a fast flick,
+    /// short enough that a crash in that window costs at most the last few
+    /// frames of a gesture — and those are never the value the user meant to keep,
+    /// because the meaningful one is flushed on drag end anyway.
+    private static let islandSizePersistDelay: TimeInterval = 0.35
+
+    /// Queues the debounced `UserDefaults` write for the current sizes.
+    private func schedulePersistIslandSizeOverrides() {
+        islandSizePersistWorkItem?.cancel()
+        let snapshot = islandSizeOverrides
+        let work = DispatchWorkItem { [weak self] in
+            self?.islandSizePersistWorkItem = nil
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            self?.defaults.set(data, forKey: "islandSizeOverrides")
+        }
+        islandSizePersistWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.islandSizePersistDelay, execute: work)
+    }
+
+    /// Writes any pending debounced size immediately, on the calling thread.
+    ///
+    /// Called when a resize drag ends, so the size the user actually chose is on
+    /// disk before anything else can happen — including the app being quit, where
+    /// a still-queued write would simply be lost.
+    public func flushIslandSizeOverride() {
+        guard let work = islandSizePersistWorkItem else { return }
+        work.cancel()
+        islandSizePersistWorkItem = nil
+        guard let data = try? JSONEncoder().encode(islandSizeOverrides) else { return }
+        defaults.set(data, forKey: "islandSizeOverrides")
+    }
+
+    /// The stored size for a plugin, or `nil` when the user has never resized it.
+    public func islandSizeOverride(for id: String) -> IslandSize? {
+        islandSizeOverrides[id]
+    }
+
+    /// Stores the size a resize drag produced.
+    ///
+    /// An unusable size is never stored: a `NaN` that reached `UserDefaults` would
+    /// outlive the session, and the resolution path would have to distrust it on
+    /// every launch. Refusing at the door is cheaper than defending downstream.
+    public func setIslandSizeOverride(_ size: IslandSize, for id: String) {
+        guard IslandSize.isUsable(size) else { return }
+        var next = islandSizeOverrides
+        next[id] = IslandSize.clamp(size)
+        islandSizeOverrides = next
+    }
+
+    /// Drops a plugin's stored size so it falls back to its declared default.
+    ///
+    /// This is also the escape hatch: a user who has dragged the island into an
+    /// unusable size can get back to a working one without editing preferences.
+    public func clearIslandSizeOverride(for id: String) {
+        guard islandSizeOverrides[id] != nil else { return }
+        var next = islandSizeOverrides
+        next.removeValue(forKey: id)
+        islandSizeOverrides = next
+    }
+
     /// Orders the provided array of tabs according to customTabOrder.
     /// Unlisted tabs (e.g. newly loaded plugins) are cleanly appended at the end.
     public func orderedTabs(from tabs: [IslandTab]) -> [IslandTab] {
@@ -418,6 +511,17 @@ public class SettingsManager: ObservableObject {
             self.pluginSoundOverrides = decoded
         } else {
             self.pluginSoundOverrides = [:]
+        }
+
+        if let sizeData = defaults.data(forKey: "islandSizeOverrides"),
+           let decoded = try? JSONDecoder().decode([String: IslandSize].self, from: sizeData) {
+            // Discard any stored size that is not usable, in case a hand-edited
+            // preferences file or a future regression has left a corrupt entry
+            // behind. Otherwise the resolution path would have to defend on
+            // every read, which is the wrong layer.
+            self.islandSizeOverrides = decoded.filter { IslandSize.isUsable($0.value) }
+        } else {
+            self.islandSizeOverrides = [:]
         }
         
         self.soundEffectsEnabled = defaults.object(forKey: "soundEffectsEnabled") as? Bool ?? true

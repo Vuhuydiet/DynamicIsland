@@ -107,9 +107,30 @@ public class DynamicIslandHostingView: NSHostingView<IslandContainerView> {
 
 public class WindowController: ObservableObject {
     public static let shared = WindowController()
-    
+
+    /// The panel is a transparent, click-through **canvas**, not the surface: the
+    /// visible island is a SwiftUI frame drawn inside it.
+    ///
+    /// It therefore has to be at least as large as the largest island plus the drop
+    /// shelf, or a wide island is clipped. It is sized from the screen rather than
+    /// fixed, so the ceiling on how large the island can be is the display and not
+    /// a constant that quietly caps it.
     public static let panelWidth: CGFloat = 880.0
     public static let panelHeight: CGFloat = 720.0
+
+    /// Canvas size for a given screen.
+    ///
+    /// Both axes are clamped to the screen: the canvas is transparent and
+    /// click-through, so headroom beyond the island costs nothing, and anything
+    /// wider or taller than the display is simply invisible.
+    public static func canvasSize(for screen: NSScreen) -> (width: CGFloat, height: CGFloat) {
+        let requiredWidth = IslandSize.maxWidth + 80.0   // island + shelf side padding
+        let requiredHeight = IslandSize.maxContentHeight + 220.0  // island chrome + shelf
+        return (
+            min(screen.frame.width, max(panelWidth, requiredWidth)),
+            min(screen.frame.height, max(panelHeight, requiredHeight))
+        )
+    }
     
     public var panel: DynamicIslandPanel?
     private var globalEventMonitor: Any?
@@ -300,34 +321,38 @@ public class WindowController: ObservableObject {
     
     public func createAndShowPanel() {
         guard let screen = NSScreen.main else { return }
-        
-        let panelWidth: CGFloat = Self.panelWidth
-        let panelHeight: CGFloat = Self.panelHeight
-        
+
+        let canvas = Self.canvasSize(for: screen)
+        let panelWidth = canvas.width
+        let panelHeight = canvas.height
+
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
         let originY = screenRect.maxY - panelHeight
-        
+
         let rect = NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight)
         let newPanel = DynamicIslandPanel(contentRect: rect)
-        
+
         let hostingView = DynamicIslandHostingView(rootView: IslandContainerView())
         hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
         newPanel.contentView = hostingView
-        
+
         newPanel.orderFrontRegardless()
         self.panel = newPanel
     }
-    
+
     public func repositionPanel() {
         guard let screen = NSScreen.main, let panel = self.panel else { return }
-        
-        let panelWidth: CGFloat = Self.panelWidth
-        let panelHeight: CGFloat = Self.panelHeight
+
+        // Same resolution as `createAndShowPanel`, so a screen change and a resize
+        // cannot disagree about how big the canvas is.
+        let canvas = Self.canvasSize(for: screen)
+        let panelWidth = canvas.width
+        let panelHeight = canvas.height
         let screenRect = screen.frame
         let originX = screenRect.midX - (panelWidth / 2.0)
         let originY = screenRect.maxY - panelHeight
-        
+
         panel.setFrame(NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight), display: true)
     }
     
@@ -406,7 +431,11 @@ public class WindowController: ObservableObject {
             // No upper-Y check — the cursor physically cannot go above the screen top.
             let inY = mouse.y >= (islandBottom - margin)
 
-            if !(inX && inY) {
+            // A resize drag starts on this very boundary, so the leave check would
+            // collapse the island out from under the pointer mid-gesture. The rule
+            // is suspended while the user is deliberately holding the edge, rather
+            // than widened — see `AppState.isResizing`.
+            if !(inX && inY) && !appState.isResizing {
                 DispatchQueue.main.async {
                     if appState.isExpanded && !appState.isPinned {
                         appState.handleMouseLeave()

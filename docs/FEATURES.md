@@ -76,6 +76,12 @@ The island **widens** when an integrated app tab is active and morphs back for s
 tools, with spring physics on both axes. Exact dimensions:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) §3.
 
+**The opened island is resizable on app tabs.** A grip in the bottom-right corner
+drags width and height, and the size is remembered for that app — the web view
+follows the new frame, so a site gets the larger viewport rather than being
+letterboxed inside a fixed one. Built-in tool tabs keep their fixed size, and
+**Preferences → Plugins** shows each app's current size with a reset.
+
 **Tab order** is user-configurable (**Preferences → Behavior & Tabs → Island Tabs &
 Order**) with up/down arrows, position indicators, and a one-click reset. Tabs are
 identifiable by name in Preferences and reorderable by dragging. Newly registered
@@ -180,7 +186,7 @@ entry you can rename, edit, disable, or delete, and re-add from **Presets**.
 | Capability | What you get |
 | :--- | :--- |
 | **Add by URL** | Paste any address; a separate tab and web session are created for it |
-| **Dynamic sizing** | Integrated apps get a larger viewport automatically |
+| **Dynamic sizing** | Integrated apps get a larger viewport automatically, and you can drag the island's corner to resize it — the size is remembered per app |
 | **Persistent login** | Cookies and `localStorage` survive relaunch, per site |
 | **Per-site zoom** | Zoom is stored per host, so two web apps don't share one setting |
 | **Authentic icons** | Each tab's icon is fetched from the site itself (`/favicon.ico`, then `/apple-touch-icon.png`) and cached on disk, so a new app shows its real logo without you hunting for one. Sites that publish neither keep a neutral globe — a tab never borrows another app's icon |

@@ -33,14 +33,19 @@ The island lives in a single `DynamicIslandPanel` (`NSPanel` subclass) owned by
 | `collectionBehavior` | `[.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]` |
 | `isOpaque` / `backgroundColor` | `false` / `.clear` |
 | `canBecomeKey` / `canBecomeMain` | `true` / `false` |
-| Panel size | `880 × 720 pt` |
-| Origin | `x = screen.midX - 440`, `y = screen.maxY - 720` |
+| Panel size | from `canvasSize(for:)` — the larger of `880 × 720` or the max island plus shelf, clamped to the screen |
+| Origin | `x = screen.midX - width/2`, `y = screen.maxY - height` |
 
 The panel is **much larger than the visible island** on purpose. It is a
 transparent canvas anchored to the top of the screen, giving headroom for the
-largest expanded state (an integrated app tab at `740 × 400 pt`) plus the secondary
-drop shelf below the main island. Only the part that is actually island geometry
-receives clicks — everything else is click-through.
+largest expanded state (an island the user has dragged out to `1200 × 900 pt`)
+plus the secondary drop shelf below the main island. Only the part that is actually
+island geometry receives clicks — everything else is click-through.
+
+Its size is derived from the screen rather than fixed, so the ceiling on how large
+the island can become is the display itself rather than a constant that silently
+caps it. Because the island is top-anchored and centred, the canvas growing changes
+nothing about where the island sits.
 
 `canBecomeKey` is required so text fields in the Notes and Clipboard tabs can
 receive keyboard input. `canBecomeMain` is `false` so the island never becomes the
@@ -110,8 +115,8 @@ compactIslandWidth  = notchWidth + 2 * compactEarWidth + 2 * compactFlareWidth  
 
 | | System tools | Integrated apps |
 | :--- | :--- | :--- |
-| Island width | `560 pt` (`AppState.expandedWidth`) | `preferredIslandWidth`, default `740 pt` |
-| Content height | `170 pt` | `preferredContentHeight`, default `400 pt` |
+| Island width | `560 pt` (`AppState.expandedWidth`) | the user's stored size, else `preferredIslandWidth`, default `740 pt` |
+| Content height | `170 pt` | the user's stored size, else `preferredContentHeight`, default `400 pt` |
 
 ```swift
 expandedHeight = notchTopInset + 38 + contentHeight + 16
@@ -122,6 +127,112 @@ totalExpandedHeight = shelfRectangleHeight > 0
 
 The drop shelf is always measured as a **split secondary rectangle** 12pt below the
 main island, never as part of it.
+
+### The user can resize the opened island
+
+On a **plugin tab** the island is resizable: a grip in the bottom-right corner drags
+both axes, and the chosen size is remembered per plugin. Tool tabs keep their fixed
+geometry — their content is a fixed-format readout rather than a document.
+
+`AppState.resolvedSize(for:)` is the **single place a plugin's declared size is
+read**, and the single resolution point for the whole island.
+`expandedWidth` and `currentContentHeight` both consult it, so all six readers of the
+geometry — the drawn frame, the tab bar, `DynamicIslandHostingView.hitTest`, and
+`WindowController.checkMousePosition` — follow the user's size with no change at any
+of them. A stored size that is not usable (`NaN`, infinite, or non-positive) is
+discarded in favour of the plugin's declaration, so a corrupt preference degrades to
+a working island rather than an invisible one.
+
+Two constraints on the mechanism, both structural rather than tuned:
+
+- **The panel is not the surface.** The island is a SwiftUI frame inside a
+  transparent, click-through `NSPanel` that is deliberately *larger* than the island.
+  Resizing the panel would resize the canvas, and because the island is top-anchored
+  a taller frame pushes the visible top edge off-screen. The canvas is instead sized
+  from the screen by `WindowController.canvasSize(for:)` and clamped to it, so the
+  ceiling on island size is the display rather than a constant.
+- **The grip, not `NSPanel.setFrame`.** A borderless window gets no resize cursor and
+  no resize corner from macOS, so `IslandResizeGrip` draws its own affordance and
+  AppKit's public diagonal cursor does not exist — the grip builds one from a
+  template image via `NSCursor(image:hotSpot:)`.
+- **The grip strokes the island's own shape path, in an `.overlay` applied after the
+  `clipShape`.** `FullHubExpandedView.body` is a `VStack`, so a grip added as a child
+  there is laid out *below* the content and then cut away — it is never drawn. The grip
+  is therefore attached in `IslandContainerView` with `.overlay(alignment: .bottomTrailing)`
+  **after** `.clipShape`.
+  It strokes `containerShape.path(in:)` — the island's own outline — rather than
+  building a corner from a radius. A hand-rolled arc cannot follow the edge, because
+  the real bottom-right corner is neither a circle nor at the frame's corner: in notch
+  mode `NotchIslandShape` curves it with radius `rBottom` centred at
+  `(width - flareWidth - rBottom, height - rBottom)`, and in floating mode the shape is
+  a `RoundedRectangle(.continuous)` squircle. Stroking the actual path fits by
+  construction in both modes and leaves the radius with a single owner instead of a
+  second copy that can drift.
+  The visible run of edge comes from a diagonal gradient mask, so the brightest point
+  is the corner itself and there is no separately-positioned tip to keep in sync. The
+  mask covers only the corner's curve (its reach is sized to the 32pt bottom radius),
+  so the straight edges above it stay plain glass.
+  The failure here is silent and easy to misread: the web view is a `WKWebView` in an
+  `NSViewRepresentable`, which composites above SwiftUI, so "the page is covering it"
+  is always available as an explanation whether or not it is true.
+  A bright 40×40 marker placed alongside the grip was *equally* invisible, which is
+  what ruled the web view out and pointed at the layout instead.
+- **A glow that traces a path must not own input.** Stroking the island's full
+  outline is what makes the glow follow the real edge, but a stroked `Path` is
+  hit-tested by its *fill* — the entire island — and `.mask` limits only what is
+  drawn, never what is hit. With input attached, the invisible glow swallowed every
+  click in the island and the unpin button stopped responding; nothing in the view
+  looked wrong, and the pin button was still plainly drawn.
+  The glow therefore carries `.allowsHitTesting(false)`, and the only thing accepting
+  input is a separate 64pt corner square — well clear of the header, so it cannot
+  shadow the pin button.
+  More generally: any overlay that is invisible for most of its area is a trap, since
+  the eye reports the visible part while the hit region covers the rest.
+- **The grip's corner comes from `IslandGripRegion`, never from a hand-written rect.**
+  SwiftUI's `y` grows *downward*, so a region written as `y: 0` is the island's **top**
+  edge, not its origin-relative bottom corner. That single sign error put the grip's
+  invisible hit region over the header, on the unpin button, while the visible glow sat
+  correctly at the bottom corner — so unpin and the drag both failed while the glow
+  rendered perfectly and every screenshot looked right.
+  The named type makes the inversion unrepresentable, and `IslandGripRegionTests` pins
+  each edge to the matching edge of the island; reintroducing the bug fails four of
+  them, including the one that specifically asserts the grip is not the top corner.
+- **The grip draws nothing; the cursor is the affordance.**
+  A brightening rim on the bottom-right corner read as an active state rather than a
+  handle, and it drew the eye to a part of the island that does nothing until dragged.
+  The diagonal cursor carries it instead, which is how AppKit signals a resizable
+  window. The visible part is gone, so the hit region is the *only* affordance and has
+  to be large enough to find blind.
+- **A live resize drag must not animate the width or height, and must not write to
+  `UserDefaults` per frame.**
+  Both were measured causes of the island trailing the pointer. The springs are for
+  sizes the user did not choose frame by frame; during a drag the edge is expected to
+  be glued to the cursor, and a spring makes the two visibly separate.
+  And because `setIslandSizeOverride` runs on every pointer frame, a synchronous
+  `JSONEncoder` + `defaults.set` on the main thread put that cost in front of layout
+  and drawing. The live value publishes immediately; only the *write* is debounced, and
+  `endResize` flushes it so the size the user chose is durable.
+- **The glow rests at low intensity; it is not hover-only.** A faint glyph on
+  translucent glass at 0.28 read as absent, and a glow visible only on hover would be
+  the same failure with more steps — the affordance must be discoverable before the
+  pointer arrives. It brightens and extends along the edge on hover, and saturates
+  while dragging, with the diagonal `NSCursor` as the confirmation once the pointer is
+  actually there.
+- **A native view in the content still covers a SwiftUI overlay.** `NSViewRepresentable`
+  composites **above** SwiftUI in the same layer, so neither ZStack order nor
+  `.overlay` can lift a SwiftUI view over one. The grip avoids the fight by sitting
+  in the island's bottom-right corner, outside the content's frame.
+
+**A resize drag starts on the island's bottom edge**, which is exactly where the
+mouse-leave check collapses it, so `AppState.isResizing` suspends that rule for the
+duration of the drag. The alternative — widening the leave margin — buys correctness
+by *disagreeing less often* about where the island is and leaves the overlap in place
+for the next reader of that margin. The flag is also cleared in `collapse()`, so a
+collapse triggered from outside the drag (Esc, a notification, a fullscreen
+transition) cannot leave it pinned and wedge the island open.
+
+Drag geometry is derived from the size the drag *started* at, never accumulated, so
+the result cannot depend on the frame rate — see `IslandSize.resized(start:translation:)`
 
 ---
 
