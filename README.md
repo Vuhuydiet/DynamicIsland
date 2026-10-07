@@ -53,6 +53,46 @@ The script compiles the sources, assembles the `.app` bundle, generates `Info.pl
 
 ---
 
+## 📦 Releases
+
+The version stamp lives in [`VERSION`](VERSION) at the repo root.
+`scripts/build_app.sh` reads it when generating `Info.plist`, so the git tag, the bundle, and the running app always agree on the version.
+Bumping is a one-line edit to `VERSION`; the bundle follows.
+
+Releases go through [`scripts/release.sh`](scripts/release.sh), which is split into two phases on purpose so the running app stays the review (§6.2 of `AGENTS.md`).
+
+```bash
+# Phase 1: optionally bump VERSION, build, install, relaunch, report.
+# Run this, look at the app, and only proceed if it behaves like a release.
+./scripts/release.sh                       # use VERSION as-is
+./scripts/release.sh --bump patch          # 0.2.0 → 0.2.1
+./scripts/release.sh --bump minor          # 0.2.0 → 0.3.0
+./scripts/release.sh --bump major          # 0.2.0 → 1.0.0
+
+# Phase 2: tag (opens $EDITOR for the release notes) and push.
+./scripts/release.sh --push
+```
+
+The script refuses to run from a dirty tree, from a branch other than `main`, when local `main` is behind `origin/main`, or when the tag already exists.
+It builds, verifies the installed bundle's `CFBundleShortVersionString` matches `VERSION`, relaunches the app, and only then waits for the user to run with `--push`.
+The `--push` phase creates an *annotated* tag and pushes `main` and the tag atomically.
+
+A typical release therefore looks like:
+
+```bash
+# Make sure tests are green and the build is fresh.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
+./scripts/release.sh --bump minor   # phase 1: bump, build, install, relaunch
+# ...look at the app...
+./scripts/release.sh --push         # phase 2: tag, push
+```
+
+> [!NOTE]
+> The release notes live in the tag, not in the bump commit.
+> The bump commit is a one-line `VERSION` change; the curated summary sits on the tag so the commit history stays a clean changelog and the human-written release notes stay on the milestone.
+
+---
+
 ## 🧪 Tests
 
 ```bash
@@ -80,11 +120,13 @@ dynamic-island/
 ├── Package.swift                    # Test-only manifest (not the shipping build)
 ├── scripts/
 │   ├── build_app.sh                 # Compile + bundle + install
+│   ├── release.sh                   # Two-phase release (bump → verify → tag → push)
 │   ├── generate_icon.swift          # Icon generator
 │   └── AppIcon.icns                 # 1024×1024 app icon
 ├── Resources/PluginIcons/           # Bundled plugin logos
 ├── Tests/DynamicIslandTests/        # Headless pure-logic tests
 ├── docs/                            # Feature & architecture documentation
+├── VERSION                          # Current version stamp (read by build_app.sh)
 └── Sources/DynamicIsland/
     ├── App/                         # App delegate, panels, sound, focus
     ├── Models/                      # Managers & persisted state (singletons)
